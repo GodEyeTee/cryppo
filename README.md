@@ -165,7 +165,7 @@ trading_sim_env/                      # โฟลเดอร์หลักข�
 หากคุณใช้ TSE ในงานวิจัยหรือโปรเจคของคุณ กรุณาอ้างอิงตามนี้:
 
 ```
-@misc{trading-sim-env2024,
+@misc{cryppo2025,
   author = {Your Name},
   title = {Trading Simulation Environment for Advanced Reinforcement Learning},
   year = {2025},
