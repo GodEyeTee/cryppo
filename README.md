@@ -175,7 +175,7 @@ trading_sim_env/                      # โฟลเดอร์หลักข�
 
 ## การติดต่อ
 
-หากมีคำถาม ข้อเสนอแนะ หรือพบเจอปัญหา กรุณาเปิด issue หรือติดต่อทาง [your.email@example.com](mailto:Shiroaims@gmail.com)
+หากมีคำถาม ข้อเสนอแนะ หรือพบเจอปัญหา กรุณาเปิด issue หรือติดต่อทาง [Shiroaims@gmail.com](mailto:Shiroaims@gmail.com)
 
 ## สัญญาอนุญาต
 
