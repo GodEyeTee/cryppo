@@ -1,0 +1,109 @@
+# .gitignore
+
+# ข้อมูลโปรเจค
+data/raw/
+data/processed/
+data/indicators/
+outputs/
+logs/
+.env
+
+# ไฟล์การตั้งค่าส่วนตัว
+src/utils/config.py
+configs/api_keys.json
+configs/credentials.json
+configs/personal_settings.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env/
+.venv/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Tensorboard
+runs/
+
+# Additional
+.cache
+temp/
+
+# Large files
+*.parquet
+*.csv
+*.h5
+*.hdf5
+*.pkl
+*.hd5
+*.hdf
+*.pt
+*.pth
+*.weights
+*.zip
+*.gz
+*.tar
+
+# ยกเว้นไฟล์ตัวอย่าง
+!examples/*.csv
+!examples/*.parquet
+!examples/*.json
