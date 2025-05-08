@@ -139,21 +139,89 @@ cryppo/                      # โฟลเดอร์หลักของโ�
 │
 ├── data/                             # โฟลเดอร์สำหรับเก็บข้อมูล
 │   ├── raw/                          # ข้อมูลดิบจาก Binance
+│   │   ├── BTC-USDT/                 # ข้อมูลแยกตามคู่สกุลเงิน
+│   │   │   ├── 1m/                   # ข้อมูลไทม์เฟรม 1 นาที
+│   │   │   ├── 5m/                   # ข้อมูลไทม์เฟรม 5 นาที
+│   │   │   └── ...
+│   │   └── ...
 │   ├── processed/                    # ข้อมูลที่ผ่านการประมวลผลแล้ว
+│   │   ├── BTC-USDT/
+│   │   │   ├── 1m_processed.parquet  # ข้อมูลที่เตรียมไว้สำหรับโมเดล
+│   │   │   ├── 5m_processed.parquet
+│   │   │   └── ...
+│   │   └── ...
 │   └── indicators/                   # ข้อมูลตัวชี้วัดที่คำนวณไว้ล่วงหน้า
+│       └── ...
 │
 ├── src/                              # โค้ดซอร์ส
+│   ├── __init__.py                  
+│   │
 │   ├── data/                         # โมดูลเกี่ยวกับข้อมูล
+│   │   ├── __init__.py
+│   │   ├── binance_downloader.py     # ดาวน์โหลดข้อมูลจาก Binance API
+│   │   ├── data_processor.py         # การประมวลผลข้อมูล (LogTransform+Z-score)
+│   │   ├── indicators.py             # คำนวณตัวชี้วัดต่างๆ (indicators)
+│   │   └── data_manager.py           # การจัดการข้อมูลสำหรับการเทรนและทดสอบ
+│   │
 │   ├── environment/                  # โมดูลสภาพแวดล้อมจำลอง
+│   │   ├── __init__.py
+│   │   ├── trading_simulator.py      # จำลองการเทรดในตลาด
+│   │   ├── trading_env.py            # สภาพแวดล้อม Gym/Gymnasium
+│   │   └── renderer.py               # การแสดงผลกราฟและข้อมูล
+│   │
 │   ├── models/                       # โมดูลของโมเดล RL
+│   │   ├── __init__.py
+│   │   ├── dqn.py                    # Double DQN
+│   │   ├── per.py                    # Prioritized Experience Replay
+│   │   ├── noisy_nets.py             # Noisy Networks
+│   │   ├── dueling_dqn.py            # Dueling DQN
+│   │   └── regularized_q.py          # Regularized Q-Learning
+│   │
 │   ├── utils/                        # โมดูลยูทิลิตี้
+│   │   ├── __init__.py
+│   │   ├── config.py                 # การตั้งค่าต่างๆ
+│   │   ├── metrics.py                # การวัดประสิทธิภาพต่างๆ
+│   │   └── visualization.py          # การสร้างกราฟและภาพต่างๆ
+│   │
 │   └── common/                       # โมดูลที่ใช้ร่วมกัน
+│       ├── __init__.py
+│       ├── constants.py              # ค่าคงที่ต่างๆ
+│       └── logger.py                 # ระบบบันทึก log
 │
-├── notebooks/                        # Jupyter notebooks
+├── notebooks/                        # Jupyter notebooks สำหรับการวิเคราะห์และทดสอบ
+│   ├── 01_data_exploration.ipynb     # การสำรวจข้อมูล
+│   ├── 02_indicators_analysis.ipynb  # การวิเคราะห์ตัวชี้วัด
+│   ├── 03_model_testing.ipynb        # การทดสอบโมเดล
+│   └── ...
+│
 ├── tests/                            # ทดสอบโค้ด
+│   ├── __init__.py
+│   ├── test_data_processor.py        # ทดสอบการประมวลผลข้อมูล
+│   ├── test_trading_simulator.py     # ทดสอบตัวจำลองการเทรด
+│   └── ...
+│
 ├── scripts/                          # สคริปต์ต่างๆ
+│   ├── download_data.py              # สคริปต์ดาวน์โหลดข้อมูล
+│   ├── train_model.py                # เทรนโมเดล
+│   ├── backtest.py                   # ทดสอบย้อนหลัง
+│   └── evaluate.py                   # ประเมินผลโมเดล
+│
 ├── configs/                          # ไฟล์การตั้งค่า
-└── outputs/                          # ผลลัพธ์จากการเทรนและทดสอบ
+│   ├── data_config.json              # การตั้งค่าเกี่ยวกับข้อมูล
+│   ├── env_config.json               # การตั้งค่าสภาพแวดล้อม
+│   ├── model_config.json             # การตั้งค่าโมเดล
+│   └── ...
+│
+├── outputs/                          # ผลลัพธ์จากการเทรนและทดสอบ
+│   ├── models/                       # โมเดลที่เทรนแล้ว
+│   ├── logs/                         # บันทึกการเทรนและทดสอบ
+│   ├── plots/                        # กราฟและแผนภาพ
+│   └── backtest_results/             # ผลลัพธ์การทดสอบย้อนหลัง
+│
+├── .gitignore                        # ไฟล์ที่ต้องการให้ git ไม่สนใจ
+├── requirements.txt                  # แพ็คเกจที่จำเป็น
+├── setup.py                          # สำหรับติดตั้งแพ็คเกจ
+└── README.md                         # เอกสารการใช้งาน
 ```
 
 ## ตัวอย่างผลลัพธ์
