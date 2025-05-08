@@ -31,7 +31,7 @@ TSE ใช้เทคนิค Log Transform + Z-score Normalization เพื�
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/trading-sim-env.git
+git clone https://github.com/GodEyeTee/cryppo.git
 cd trading-sim-env
 
 # สร้าง virtual environment (แนะนำ)
@@ -168,8 +168,8 @@ trading_sim_env/                      # โฟลเดอร์หลักข�
 @misc{trading-sim-env2024,
   author = {Your Name},
   title = {Trading Simulation Environment for Advanced Reinforcement Learning},
-  year = {2024},
-  url = {https://github.com/yourusername/trading-sim-env}
+  year = {2025},
+  url = {https://github.com/GodEyeTee/cryppo}
 }
 ```
 
