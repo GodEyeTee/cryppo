@@ -1,7 +1,7 @@
 # Trading Simulation Environment (TSE)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3129/)
 
 **Trading Simulation Environment (TSE)** คือระบบจำลองการเทรดที่สมจริงสำหรับการพัฒนาและทดสอบอัลกอริทึม Reinforcement Learning (RL) ขั้นสูง เช่น Prioritized Experience Replay, Regularized Q-Learning, Noisy Networks, Dueling DQN และ Double DQN
 
