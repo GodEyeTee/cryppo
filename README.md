@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-<img src="https://raw.githubusercontent.com/GodEyeTee/RedMouse/refs/heads/main/MouseRed2.webp" alt="Markdownify" width="200">
+<img src="https://github.com/GodEyeTee/cryppo/blob/main/CRYPPO.png" alt="Markdownify" width="200">
   <br>
 CRYPtocurrency Position Optimization (CRYPPO)
 </h1>
