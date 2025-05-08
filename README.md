@@ -1,4 +1,11 @@
-# CRYPtocurrency Position Optimization (CRYPPO)
+<h1 align="center">
+  <br>
+<img src="https://raw.githubusercontent.com/GodEyeTee/RedMouse/refs/heads/main/MouseRed2.webp" alt="Markdownify" width="200">
+  <br>
+CRYPtocurrency Position Optimization (CRYPPO)
+</h1>
+
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3129/)
