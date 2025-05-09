@@ -63,7 +63,7 @@ python src/data/binance_downloader.py --symbol BTCUSDT --timeframe 5m --start 20
 ### 2. ประมวลผลข้อมูล
 
 ```bash
-python -m src.data.data_processor --input data/raw/BTC-USDT --output data/processed/BTC-USDT
+python -m src.data.data_processor --input data/raw/BTCUSDT/1m --output data/processed/BTCUSDT/1m
 ```
 
 ### 3. เทรนโมเดล
