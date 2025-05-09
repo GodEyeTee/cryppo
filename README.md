@@ -241,8 +241,8 @@ cryppo/                      # โฟลเดอร์หลักของโ�
 
 ```
 @misc{cryppo2025,
-  author = {Your Name},
-  title = {Trading Simulation Environment for Advanced Reinforcement Learning},
+  author = {GodEyeTee},
+  title = {Cryptocurrency Position Optimization},
   year = {2025},
   url = {https://github.com/GodEyeTee/cryppo}
 }
