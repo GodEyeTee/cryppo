@@ -203,92 +203,119 @@ python scripts/backtest.py \
 ## 🗂️ โครงสร้างโปรเจค
 
 ```
-cryppo/                      # โฟลเดอร์หลักของโปรเจค
+cryppo/                           # โฟลเดอร์หลักของโปรเจค
 │
 ├── data/                             # โฟลเดอร์สำหรับเก็บข้อมูล
 │   ├── raw/                          # ข้อมูลดิบจาก Binance
-│   │   ├── BTC-USDT/                 # ข้อมูลแยกตามคู่สกุลเงิน
-│   │   │   ├── 1m/                   # ข้อมูลไทม์เฟรม 1 นาที
-│   │   │   ├── 5m/                   # ข้อมูลไทม์เฟรม 5 นาที
-│   │   │   └── ...
-│   │   └── ...
 │   ├── processed/                    # ข้อมูลที่ผ่านการประมวลผลแล้ว
-│   │   ├── BTC-USDT/
-│   │   │   ├── 1m_processed.parquet  # ข้อมูลที่เตรียมไว้สำหรับโมเดล
-│   │   │   ├── 5m_processed.parquet
-│   │   │   └── ...
-│   │   └── ...
 │   └── indicators/                   # ข้อมูลตัวชี้วัดที่คำนวณไว้ล่วงหน้า
-│       └── ...
 │
 ├── src/                              # โค้ดซอร์ส
-│   ├── __init__.py                  
+│   ├── __init__.py                   # ทำให้เป็น package
 │   │
 │   ├── data/                         # โมดูลเกี่ยวกับข้อมูล
-│   │   ├── __init__.py
-│   │   ├── binance_downloader.py     # ดาวน์โหลดข้อมูลจาก Binance API
-│   │   ├── data_processor.py         # การประมวลผลข้อมูล (LogTransform+Z-score)
-│   │   ├── indicators.py             # คำนวณตัวชี้วัดต่างๆ (indicators)
-│   │   └── data_manager.py           # การจัดการข้อมูลสำหรับการเทรนและทดสอบ
+│   │   ├── __init__.py               # ทำให้เป็น package
+│   │   ├── api/                      # API สำหรับดึงข้อมูล
+│   │   │   ├── __init__.py
+│   │   │   └── binance_api.py        # เฉพาะการติดต่อกับ Binance API
+│   │   │
+│   │   ├── downloaders/              # โมดูลสำหรับการดาวน์โหลด
+│   │   │   ├── __init__.py
+│   │   │   ├── base_downloader.py    # คลาสพื้นฐานสำหรับ downloader
+│   │   │   └── binance_downloader.py # การดาวน์โหลดข้อมูลจาก Binance
+│   │   │
+│   │   ├── transforms/               # โมดูลสำหรับการแปลงข้อมูล
+│   │   │   ├── __init__.py
+│   │   │   ├── data_transforms.py    # การแปลงข้อมูล (Log, Z-score, etc.)
+│   │   │   └── data_cleaning.py      # การทำความสะอาดข้อมูล
+│   │   │
+│   │   ├── indicators/               # โมดูลสำหรับตัวชี้วัดทางเทคนิค
+│   │   │   ├── __init__.py
+│   │   │   ├── basic_indicators.py   # ตัวชี้วัดพื้นฐาน (RSI, MACD, etc.)
+│   │   │   ├── advanced_indicators.py # ตัวชี้วัดขั้นสูง
+│   │   │   └── indicator_registry.py # ระบบทะเบียนตัวชี้วัด
+│   │   │
+│   │   ├── managers/                 # โมดูลสำหรับการจัดการข้อมูล
+│   │   │   ├── __init__.py
+│   │   │   └── data_manager.py       # การจัดการข้อมูลในหน่วยความจำ
+│   │   │
+│   │   ├── processors/               # โมดูลสำหรับการประมวลผลข้อมูล
+│   │   │   ├── __init__.py
+│   │   │   └── data_processor.py     # การประมวลผลข้อมูล
+│   │   │
+│   │   └── utils/                    # ยูติลิตี้สำหรับการจัดการข้อมูล
+│   │       ├── __init__.py
+│   │       ├── time_utils.py         # ยูติลิตี้เกี่ยวกับเวลา
+│   │       └── file_utils.py         # ยูติลิตี้เกี่ยวกับไฟล์
 │   │
 │   ├── environment/                  # โมดูลสภาพแวดล้อมจำลอง
 │   │   ├── __init__.py
-│   │   ├── trading_simulator.py      # จำลองการเทรดในตลาด
-│   │   ├── trading_env.py            # สภาพแวดล้อม Gym/Gymnasium
-│   │   └── renderer.py               # การแสดงผลกราฟและข้อมูล
+│   │   ├── base_env.py               # คลาสพื้นฐานสำหรับสภาพแวดล้อม
+│   │   ├── trading_env.py            # สภาพแวดล้อมการเทรด
+│   │   ├── simulators/               # โมดูลจำลองการทำงาน
+│   │   │   ├── __init__.py
+│   │   │   └── trading_simulator.py  # จำลองการเทรดในตลาด
+│   │   └── renderers/                # โมดูลการแสดงผล
+│   │       ├── __init__.py
+│   │       └── renderer.py           # การแสดงผลกราฟและข้อมูล
 │   │
 │   ├── models/                       # โมดูลของโมเดล RL
 │   │   ├── __init__.py
-│   │   ├── dqn.py                    # Double DQN
-│   │   ├── per.py                    # Prioritized Experience Replay
-│   │   ├── noisy_nets.py             # Noisy Networks
-│   │   ├── dueling_dqn.py            # Dueling DQN
-│   │   └── regularized_q.py          # Regularized Q-Learning
+│   │   ├── base_model.py             # คลาสพื้นฐานสำหรับโมเดล
+│   │   ├── components/               # ส่วนประกอบของโมเดล
+│   │   │   ├── __init__.py
+│   │   │   ├── networks.py           # เครือข่ายประสาทเทียม
+│   │   │   ├── memories.py           # หน่วยความจำสำหรับ RL
+│   │   │   └── policies.py           # นโยบายการตัดสินใจ
+│   │   │
+│   │   ├── dqn/                      # โมดูลสำหรับ DQN
+│   │   │   ├── __init__.py
+│   │   │   ├── dqn.py                # Basic DQN
+│   │   │   ├── double_dqn.py         # Double DQN
+│   │   │   └── dueling_dqn.py        # Dueling DQN
+│   │   │
+│   │   └── utils/                    # ยูติลิตี้สำหรับโมเดล
+│   │       ├── __init__.py
+│   │       ├── exploration.py        # กลยุทธ์การสำรวจ
+│   │       └── loss_functions.py     # ฟังก์ชันการสูญเสีย
 │   │
 │   ├── utils/                        # โมดูลยูทิลิตี้
 │   │   ├── __init__.py
-│   │   ├── config.py                 # การตั้งค่าต่างๆ
+│   │   ├── config_manager.py         # การจัดการการตั้งค่า
 │   │   ├── metrics.py                # การวัดประสิทธิภาพต่างๆ
-│   │   └── visualization.py          # การสร้างกราฟและภาพต่างๆ
+│   │   ├── visualization.py          # การสร้างกราฟและภาพต่างๆ
+│   │   └── loggers.py                # ระบบบันทึก log
 │   │
-│   └── common/                       # โมดูลที่ใช้ร่วมกัน
+│   └── cli/                          # โมดูลสำหรับ Command Line Interface
 │       ├── __init__.py
-│       ├── constants.py              # ค่าคงที่ต่างๆ
-│       └── logger.py                 # ระบบบันทึก log
+│       ├── main.py                   # จุดเริ่มต้นของคำสั่ง cryppo
+│       └── commands/                 # โมดูลสำหรับคำสั่งต่างๆ
+│           ├── __init__.py
+│           ├── data_commands.py      # คำสั่งเกี่ยวกับข้อมูล
+│           ├── train_commands.py     # คำสั่งเกี่ยวกับการเทรน
+│           └── backtest_commands.py  # คำสั่งเกี่ยวกับการทดสอบย้อนหลัง
 │
-├── notebooks/                        # Jupyter notebooks สำหรับการวิเคราะห์และทดสอบ
-│   ├── 01_data_exploration.ipynb     # การสำรวจข้อมูล
-│   ├── 02_indicators_analysis.ipynb  # การวิเคราะห์ตัวชี้วัด
-│   ├── 03_model_testing.ipynb        # การทดสอบโมเดล
-│   └── ...
+├── notebooks/                        # Jupyter notebooks สำหรับการวิเคราะห์
 │
 ├── tests/                            # ทดสอบโค้ด
 │   ├── __init__.py
-│   ├── test_data_processor.py        # ทดสอบการประมวลผลข้อมูล
-│   ├── test_trading_simulator.py     # ทดสอบตัวจำลองการเทรด
-│   └── ...
-│
-├── scripts/                          # สคริปต์ต่างๆ
-│   ├── download_data.py              # สคริปต์ดาวน์โหลดข้อมูล
-│   ├── train_model.py                # เทรนโมเดล
-│   ├── backtest.py                   # ทดสอบย้อนหลัง
-│   └── evaluate.py                   # ประเมินผลโมเดล
+│   ├── data/                         # การทดสอบโมดูลข้อมูล
+│   ├── environment/                  # การทดสอบโมดูลสภาพแวดล้อม
+│   └── models/                       # การทดสอบโมดูลโมเดล
 │
 ├── configs/                          # ไฟล์การตั้งค่า
-│   ├── data_config.json              # การตั้งค่าเกี่ยวกับข้อมูล
-│   ├── env_config.json               # การตั้งค่าสภาพแวดล้อม
-│   ├── model_config.json             # การตั้งค่าโมเดล
-│   └── ...
+│   ├── default_config.yaml           # การตั้งค่าเริ่มต้น
+│   └── example_config.yaml           # ตัวอย่างการตั้งค่า
 │
 ├── outputs/                          # ผลลัพธ์จากการเทรนและทดสอบ
 │   ├── models/                       # โมเดลที่เทรนแล้ว
 │   ├── logs/                         # บันทึกการเทรนและทดสอบ
-│   ├── plots/                        # กราฟและแผนภาพ
 │   └── backtest_results/             # ผลลัพธ์การทดสอบย้อนหลัง
 │
-├── .gitignore                        # ไฟล์ที่ต้องการให้ git ไม่สนใจ
-├── requirements.txt                  # แพ็คเกจที่จำเป็น
 ├── setup.py                          # สำหรับติดตั้งแพ็คเกจ
+├── pyproject.toml                    # ข้อมูลเกี่ยวกับโปรเจค
+├── requirements.txt                  # แพ็คเกจที่จำเป็น
+├── .gitignore                        # ไฟล์ที่ต้องการให้ git ไม่สนใจ
 └── README.md                         # เอกสารการใช้งาน
 ```
 

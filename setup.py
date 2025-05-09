@@ -1,0 +1,55 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="cryppo",
+    version="0.1.0",
+    description="CRYPtocurrency Position Optimization",
+    long_description=open("README.md", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    author="GodEyeTee",
+    author_email="Shiroaims@gmail.com",
+    url="https://github.com/GodEyeTee/cryppo",
+    packages=find_packages(),
+    package_data={
+        "cryppo": ["configs/*.yaml"],
+    },
+    entry_points={
+        "console_scripts": [
+            "cryppo=src.cli.main:main",
+        ],
+    },
+    install_requires=[
+        "numpy>=1.20.0",
+        "pandas>=1.3.0",
+        "torch>=1.9.0",
+        "PyYAML>=6.0",
+        "pyarrow>=7.0.0",
+        "tqdm>=4.62.0",
+        "matplotlib>=3.4.0",
+        "requests>=2.26.0",
+        "gymnasium>=0.26.0",
+        "tensorboard>=2.6.0",
+        "statsmodels>=0.13.0",
+    ],
+    python_requires=">=3.10",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Financial and Insurance Industry",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Natural Language :: Thai",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Office/Business :: Financial :: Investment",
+    ],
+    keywords=[
+        "cryptocurrency",
+        "reinforcement learning",
+        "trading",
+        "optimization",
+        "finance",
+    ],
+)
