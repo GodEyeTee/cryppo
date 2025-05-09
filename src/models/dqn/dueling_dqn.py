@@ -9,18 +9,133 @@ from typing import Dict, List, Tuple, Optional, Union, Any
 import os
 import json
 
-from src.models.dqn.dqn import DQN, DQNNetwork, ReplayBuffer
+from src.models.dqn.dqn import DQN, ReplayBuffer
 from src.utils.config import get_config
 
 # ตั้งค่า logger
 logger = logging.getLogger(__name__)
 
-class DoubleDQN(DQN):
+class DuelingDQNNetwork(nn.Module):
     """
-    อัลกอริทึม Double DQN
+    เครือข่ายประสาทเทียมสำหรับ Dueling DQN
     
-    Double DQN แก้ปัญหาการประมาณค่า Q ที่สูงเกินไปของ DQN ธรรมดา
-    โดยใช้ policy network เพื่อเลือกการกระทำและ target network เพื่อประเมินค่า Q
+    Dueling DQN แยกการประมาณค่า Q ออกเป็นฟังก์ชัน Value และฟังก์ชัน Advantage
+    ทำให้การประมาณค่า Q มีประสิทธิภาพมากขึ้น
+    """
+    
+    def __init__(
+        self,
+        input_dim: int,
+        output_dim: int,
+        hidden_dims: List[int] = [128, 64],
+        activation: str = 'relu',
+        use_batch_norm: bool = False,
+        dropout_rate: float = 0.0
+    ):
+        """
+        กำหนดค่าเริ่มต้นสำหรับเครือข่าย Dueling DQN
+        
+        Parameters:
+        input_dim (int): ขนาดของอินพุต
+        output_dim (int): ขนาดของเอาต์พุต (จำนวนการกระทำ)
+        hidden_dims (List[int]): ขนาดของชั้นซ่อน
+        activation (str): ฟังก์ชันกระตุ้น ('relu', 'tanh', 'leaky_relu')
+        use_batch_norm (bool): ใช้ Batch Normalization หรือไม่
+        dropout_rate (float): อัตราการ dropout
+        """
+        super(DuelingDQNNetwork, self).__init__()
+        
+        # กำหนดฟังก์ชันกระตุ้น
+        if activation == 'relu':
+            self.activation = nn.ReLU()
+        elif activation == 'tanh':
+            self.activation = nn.Tanh()
+        elif activation == 'leaky_relu':
+            self.activation = nn.LeakyReLU(0.01)
+        else:
+            self.activation = nn.ReLU()
+        
+        # สร้างโครงสร้างของเครือข่ายร่วม (feature extractor)
+        feature_layers = []
+        prev_dim = input_dim
+        
+        for i, dim in enumerate(hidden_dims[:-1]):  # ใช้ทุกชั้นยกเว้นชั้นสุดท้าย
+            feature_layers.append(nn.Linear(prev_dim, dim))
+            
+            if use_batch_norm:
+                feature_layers.append(nn.BatchNorm1d(dim))
+            
+            feature_layers.append(self.activation)
+            
+            if dropout_rate > 0:
+                feature_layers.append(nn.Dropout(dropout_rate))
+            
+            prev_dim = dim
+        
+        self.feature_extractor = nn.Sequential(*feature_layers)
+        
+        # ขนาดของ feature extractor output
+        feature_output_dim = hidden_dims[-2] if len(hidden_dims) > 1 else input_dim
+        
+        # สร้างเครือข่ายสำหรับ Value function (V)
+        value_layers = []
+        value_layers.append(nn.Linear(feature_output_dim, hidden_dims[-1]))
+        
+        if use_batch_norm:
+            value_layers.append(nn.BatchNorm1d(hidden_dims[-1]))
+        
+        value_layers.append(self.activation)
+        
+        if dropout_rate > 0:
+            value_layers.append(nn.Dropout(dropout_rate))
+        
+        value_layers.append(nn.Linear(hidden_dims[-1], 1))  # Value function มีเอาต์พุตเดียว
+        
+        self.value_stream = nn.Sequential(*value_layers)
+        
+        # สร้างเครือข่ายสำหรับ Advantage function (A)
+        advantage_layers = []
+        advantage_layers.append(nn.Linear(feature_output_dim, hidden_dims[-1]))
+        
+        if use_batch_norm:
+            advantage_layers.append(nn.BatchNorm1d(hidden_dims[-1]))
+        
+        advantage_layers.append(self.activation)
+        
+        if dropout_rate > 0:
+            advantage_layers.append(nn.Dropout(dropout_rate))
+        
+        advantage_layers.append(nn.Linear(hidden_dims[-1], output_dim))  # Advantage function มีเอาต์พุตตามจำนวนการกระทำ
+        
+        self.advantage_stream = nn.Sequential(*advantage_layers)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        การส่งผ่านไปข้างหน้า (forward pass)
+        
+        Parameters:
+        x (torch.Tensor): อินพุต
+        
+        Returns:
+        torch.Tensor: เอาต์พุต (Q-values)
+        """
+        features = self.feature_extractor(x)
+        
+        value = self.value_stream(features)
+        advantages = self.advantage_stream(features)
+        
+        # Q = V + (A - mean(A))
+        # การลบค่าเฉลี่ยของ Advantage ช่วยให้การประมาณค่า Q มีเสถียรภาพมากขึ้น
+        q_values = value + (advantages - advantages.mean(dim=1, keepdim=True))
+        
+        return q_values
+
+class DuelingDQN(DQN):
+    """
+    อัลกอริทึม Dueling DQN
+    
+    Dueling DQN แยกการประมาณค่า Q ออกเป็นฟังก์ชัน Value และฟังก์ชัน Advantage
+    ทำให้การประมาณค่า Q มีประสิทธิภาพมากขึ้น โดยเฉพาะในกรณีที่การกระทำหลายๆ อย่างมีผลลัพธ์ไม่แตกต่างกันมากนัก
     """
     
     def __init__(
@@ -46,12 +161,12 @@ class DoubleDQN(DQN):
         config = None
     ):
         """
-        กำหนดค่าเริ่มต้นสำหรับ Double DQN
+        กำหนดค่าเริ่มต้นสำหรับ Dueling DQN
         
         Parameters:
         input_size (int, optional): ขนาดของ input (ใช้แทน state_dim ถ้าใช้กับ BaseModel)
-        state_dim (int, optional): ขนาดของสถานะ
-        action_dim (int, optional): จำนวนการกระทำที่เป็นไปได้
+        state_dim (int): ขนาดของสถานะ
+        action_dim (int): จำนวนการกระทำที่เป็นไปได้
         hidden_dims (List[int]): ขนาดของชั้นซ่อนในเครือข่าย
         learning_rate (float): อัตราการเรียนรู้
         gamma (float): ค่าส่วนลด (discount factor)
@@ -69,37 +184,85 @@ class DoubleDQN(DQN):
         device (str, optional): อุปกรณ์ที่ใช้ ('cpu' หรือ 'cuda')
         config (Config, optional): อ็อบเจ็กต์การตั้งค่า
         """
+        # โหลดการตั้งค่า
+        self.config = config if config is not None else get_config()
+        
+        # ดึงการตั้งค่าที่เกี่ยวข้อง
+        model_config = self.config.extract_subconfig("model")
+        cuda_config = self.config.extract_subconfig("cuda")
+        
         # ให้เข้ากันกับ BaseModel interface
         if input_size is not None and state_dim is None:
             state_dim = input_size
         
-        # เรียกคอนสตรักเตอร์ของคลาสแม่
-        super().__init__(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            hidden_dims=hidden_dims,
-            learning_rate=learning_rate,
-            gamma=gamma,
-            epsilon_start=epsilon_start,
-            epsilon_end=epsilon_end,
-            epsilon_decay=epsilon_decay,
-            target_update_freq=target_update_freq,
-            batch_size=batch_size,
-            buffer_size=buffer_size,
-            use_batch_norm=use_batch_norm,
-            dropout_rate=dropout_rate,
-            activation=activation,
-            weight_decay=weight_decay,
-            clip_grad_norm=clip_grad_norm,
-            device=device,
-            config=config
+        # กำหนดค่าพารามิเตอร์
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.hidden_dims = hidden_dims or model_config.get("hidden_layers", [128, 64])
+        self.learning_rate = learning_rate or model_config.get("learning_rate", 0.001)
+        self.gamma = gamma or model_config.get("discount_factor", 0.99)
+        self.epsilon_start = epsilon_start or model_config.get("exploration_initial", 1.0)
+        self.epsilon_end = epsilon_end or model_config.get("exploration_final", 0.01)
+        self.epsilon_decay = epsilon_decay or model_config.get("exploration_decay", 0.995)
+        self.target_update_freq = target_update_freq or model_config.get("target_update_frequency", 10)
+        self.batch_size = batch_size or model_config.get("batch_size", 64)
+        self.buffer_size = buffer_size or model_config.get("replay_buffer_size", 10000)
+        self.use_batch_norm = use_batch_norm if use_batch_norm is not None else model_config.get("use_batch_norm", False)
+        self.dropout_rate = dropout_rate or model_config.get("dropout_rate", 0.0)
+        self.activation = activation or model_config.get("activation_function", "relu")
+        self.weight_decay = weight_decay or model_config.get("weight_decay", 0.0)
+        self.clip_grad_norm = clip_grad_norm or model_config.get("clip_grad_norm", None)
+        
+        # กำหนดอุปกรณ์
+        if device is None:
+            self.device = torch.device("cuda" if cuda_config.get("use_cuda", True) and torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+        
+        # สร้างเครือข่าย
+        self.policy_net = DuelingDQNNetwork(
+            input_dim=state_dim,
+            output_dim=action_dim,
+            hidden_dims=self.hidden_dims,
+            activation=self.activation,
+            use_batch_norm=self.use_batch_norm,
+            dropout_rate=self.dropout_rate
+        ).to(self.device)
+        
+        self.target_net = DuelingDQNNetwork(
+            input_dim=state_dim,
+            output_dim=action_dim,
+            hidden_dims=self.hidden_dims,
+            activation=self.activation,
+            use_batch_norm=self.use_batch_norm,
+            dropout_rate=self.dropout_rate
+        ).to(self.device)
+        
+        # คัดลอกพารามิเตอร์จาก policy_net ไปยัง target_net
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()  # ตั้งค่า target_net เป็นโหมดประเมิน
+        
+        # กำหนด optimizer
+        self.optimizer = optim.Adam(
+            self.policy_net.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay
         )
         
-        logger.info(f"สร้าง Double DQN")
+        # สร้าง replay buffer
+        self.replay_buffer = ReplayBuffer(self.buffer_size)
+        
+        # ตัวแปรเพิ่มเติม
+        self.epsilon = self.epsilon_start
+        self.step_count = 0
+        self.update_count = 0
+        self.train_count = 0
+        
+        logger.info(f"สร้าง Dueling DQN (state_dim={state_dim}, action_dim={action_dim}, device={self.device})")
     
     def update(self) -> float:
         """
-        อัพเดต policy network จาก replay buffer โดยใช้ Double DQN
+        อัพเดต policy network จาก replay buffer โดยใช้ Double DQN ร่วมกับ Dueling network
         
         Returns:
         float: ค่าความสูญเสีย (loss)
@@ -122,7 +285,7 @@ class DoubleDQN(DQN):
         # คำนวณ Q-values ปัจจุบัน
         current_q_values = self.policy_net(state_batch).gather(1, action_batch)
         
-        # คำนวณ Q-values เป้าหมายด้วย Double DQN
+        # คำนวณ Q-values เป้าหมายด้วย Double DQN + Dueling
         with torch.no_grad():
             # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
             next_action_batch = self.policy_net(next_state_batch).argmax(dim=1, keepdim=True)
@@ -199,10 +362,34 @@ class DoubleDQN(DQN):
                 'activation': self.activation,
                 'weight_decay': self.weight_decay,
                 'clip_grad_norm': self.clip_grad_norm,
-                'model_type': 'double_dqn'
+                'model_type': 'dueling_dqn'
             }, f, indent=2)
         
         logger.info(f"บันทึกโมเดลที่: {path}")
+    
+    def load(self, path: str) -> None:
+        """
+        โหลดโมเดลจากไฟล์
+        
+        Parameters:
+        path (str): พาธที่จะโหลด
+        """
+        # ตรวจสอบว่าไฟล์มีอยู่หรือไม่
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"ไม่พบไฟล์: {path}")
+        
+        # โหลด state_dict ของโมเดล
+        checkpoint = torch.load(path, map_location=self.device)
+        
+        self.policy_net.load_state_dict(checkpoint['policy_net'])
+        self.target_net.load_state_dict(checkpoint['target_net'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        self.epsilon = checkpoint['epsilon']
+        self.step_count = checkpoint['step_count']
+        self.update_count = checkpoint['update_count']
+        self.train_count = checkpoint['train_count']
+        
+        logger.info(f"โหลดโมเดลจาก: {path}")
     
     # เพิ่มเมธอดสำหรับ BaseModel interface
     def _create_model(self) -> torch.nn.Module:
