@@ -56,8 +56,8 @@ pip install -r requirements.txt
 ### 1. ดาวน์โหลดข้อมูล
 
 ```bash
-python src/data/download_data.py --symbol BTCUSDT --timeframe 1m --start 2024-01-01 --end 2024-12-31
-python src/data/download_data.py --symbol BTCUSDT --timeframe 5m --start 2023-01-01 --end 2023-12-31
+python src/data/binance_downloader.py --symbol BTCUSDT --timeframe 1m --start 2024-01-01 --end 2024-12-31
+python src/data/binance_downloader.py --symbol BTCUSDT --timeframe 5m --start 2023-01-01 --end 2023-12-31
 ```
 
 ### 2. ประมวลผลข้อมูล
