@@ -7,7 +7,7 @@ CRYPtocurrency Position Optimization (CRYPPO)
 
 
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/release/python-3129/)
 [![Docs](https://img.shields.io/badge/docs-DeepWiki-blue)](https://deepwiki.com/GodEyeTee/cryppo)
 
