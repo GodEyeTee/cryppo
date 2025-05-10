@@ -6,7 +6,7 @@ import json
 from src.data.managers.data_manager import MarketDataManager
 from src.models.model_factory import ModelFactory
 from src.utils.config_manager import get_config
-from src.utils.metrics import calculate_metrics
+from src.utils.metrics import PerformanceTracker
 
 logger = logging.getLogger('cli.train')
 
