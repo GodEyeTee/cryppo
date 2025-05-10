@@ -97,9 +97,10 @@ python -m src.cli.main data download \
 ### ประมวลผลข้อมูล
 
 ```bash
-python -m src.data.data_processor \
+python -m src.cli.main data process \
   --input data/raw/BTCUSDT/1m \
-  --output data/processed/BTCUSDT/1m
+  --output data/processed/BTCUSDT/1m \
+  --file-pattern "*.parquet"
 ```
 
 ---
