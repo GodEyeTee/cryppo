@@ -8,7 +8,7 @@ from src.data.managers.data_manager import MarketDataManager
 from src.environment.trading_env import TradingEnv
 from src.models.model_factory import ModelFactory
 from src.utils.config_manager import get_config
-from src.utils.metrics import calculate_trading_metrics
+from src.utils.metrics import PerformanceTracker
 
 logger = logging.getLogger('cli.backtest')
 
@@ -48,6 +48,110 @@ def setup_analyze_parser(parser):
                       default="all", help="กราฟที่ต้องการแสดง")
     parser.add_argument("--period", choices=["daily", "weekly", "monthly"], 
                       default="daily", help="ช่วงเวลาสำหรับการวิเคราะห์")
+
+def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, periods_per_year=252):
+    """
+    คำนวณเมตริกสำหรับการประเมินผลการเทรด
+    
+    Parameters:
+    trades_df (pd.DataFrame): DataFrame ของข้อมูลการเทรด
+    raw_data (pd.DataFrame, optional): DataFrame ของข้อมูลราคา (ถ้ามี)
+    risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
+    periods_per_year (int): จำนวนช่วงเวลาต่อปี
+    
+    Returns:
+    Dict[str, float]: เมตริกต่างๆ ที่คำนวณได้
+    """
+    # ตรวจสอบข้อมูล
+    if trades_df.empty:
+        logger.warning("ไม่มีข้อมูลการเทรดสำหรับการคำนวณเมตริก")
+        return {}
+    
+    # สร้าง Performance Tracker
+    initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
+    tracker = PerformanceTracker(initial_equity=initial_equity, periods_per_year=periods_per_year)
+    
+    # เพิ่มข้อมูลทีละช่วงเวลา
+    for i in range(1, len(trades_df)):
+        # ดึงข้อมูลที่จำเป็น
+        equity = trades_df['portfolio_value'].iloc[i]
+        position = trades_df['position'].iloc[i] if 'position' in trades_df.columns else 0
+        timestamp = None
+        if 'timestamp' in trades_df.columns:
+            timestamp = pd.to_datetime(trades_df['timestamp'].iloc[i])
+        
+        # อัพเดตแทรกเกอร์
+        tracker.update(equity=equity, timestamp=timestamp, position=position)
+    
+    # คำนวณเมตริก
+    metrics = tracker.calculate_metrics(risk_free_rate=risk_free_rate)
+    
+    # เพิ่มข้อมูลเกี่ยวกับช่วงเวลาทดสอบ
+    if raw_data is not None and 'timestamp' in trades_df.columns:
+        # คำนวณจำนวนวันทดสอบ
+        first_date = pd.to_datetime(trades_df['timestamp'].iloc[0]).date()
+        last_date = pd.to_datetime(trades_df['timestamp'].iloc[-1]).date()
+        days_diff = (last_date - first_date).days
+        metrics['trading_days'] = days_diff if days_diff > 0 else 1
+        
+        # คำนวณผลตอบแทนของ Buy & Hold
+        if hasattr(raw_data, 'columns') and 'close' in raw_data.columns and len(raw_data) > 1:
+            try:
+                if hasattr(raw_data.index, 'date'):
+                    mask = (raw_data.index.date >= first_date) & (raw_data.index.date <= last_date)
+                    raw_data_in_range = raw_data.loc[mask]
+                else:
+                    raw_data_in_range = raw_data
+                
+                if len(raw_data_in_range) > 1:
+                    first_price = raw_data_in_range['close'].iloc[0]
+                    last_price = raw_data_in_range['close'].iloc[-1]
+                    metrics['buy_hold_return'] = ((last_price / first_price) - 1) * 100  # เป็นเปอร์เซ็นต์
+            except Exception as e:
+                logger.warning(f"ไม่สามารถคำนวณผลตอบแทนของ Buy & Hold: {e}")
+    
+    # วิเคราะห์การเทรด
+    if 'action' in trades_df.columns and 'position' in trades_df.columns:
+        actions = trades_df['action'].values
+        positions = trades_df['position'].values
+        
+        # นับจำนวนการเทรด
+        trade_count = 0
+        winning_trades = 0
+        losing_trades = 0
+        
+        position_changes = []
+        for i in range(1, len(positions)):
+            if positions[i] != positions[i-1]:
+                position_changes.append(i)
+        
+        # ถ้ามีการเปลี่ยนตำแหน่งอย่างน้อย 2 ครั้ง จะนับเป็น 1 เทรด
+        for i in range(0, len(position_changes) - 1, 2):
+            if i + 1 < len(position_changes):
+                trade_count += 1
+                
+                start_idx = position_changes[i]
+                end_idx = position_changes[i + 1]
+                
+                # คำนวณผลตอบแทนจากการเทรด
+                start_value = trades_df['portfolio_value'].iloc[start_idx]
+                end_value = trades_df['portfolio_value'].iloc[end_idx]
+                
+                trade_return = (end_value / start_value) - 1
+                
+                if trade_return > 0:
+                    winning_trades += 1
+                else:
+                    losing_trades += 1
+        
+        metrics['total_trades'] = trade_count
+        metrics['winning_trades'] = winning_trades
+        metrics['losing_trades'] = losing_trades
+        
+        if trade_count > 0:
+            metrics['win_rate'] = (winning_trades / trade_count) * 100
+    
+    return metrics
 
 def handle_run(args):
     """
@@ -231,16 +335,16 @@ def handle_run(args):
     
     # แสดงสรุปผล
     print("\nสรุปผลการทดสอบย้อนหลัง:")
-    print(f"จำนวนวันทดสอบ: {metrics['trading_days']} วัน")
-    print(f"เงินทุนเริ่มต้น: {backtest_config.get('initial_balance'):.2f}")
+    print(f"จำนวนวันทดสอบ: {metrics.get('trading_days', 'N/A')} วัน")
+    print(f"เงินทุนเริ่มต้น: {backtest_config.get('initial_balance', trades_df['portfolio_value'].iloc[0]):.2f}")
     print(f"มูลค่าพอร์ตสุดท้าย: {portfolio_values[-1]:.2f}")
-    print(f"กำไร/ขาดทุนรวม: {portfolio_values[-1] - backtest_config.get('initial_balance'):.2f} ({metrics['total_return']:.2f}%)")
-    print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
-    print(f"Max Drawdown: {metrics['max_drawdown']:.2f}%")
-    print(f"Win Rate: {metrics['win_rate']:.2f}%")
-    print(f"จำนวนการเทรดทั้งหมด: {metrics['total_trades']}")
-    print(f"จำนวนการเทรดที่ทำกำไร: {metrics['winning_trades']}")
-    print(f"จำนวนการเทรดที่ขาดทุน: {metrics['losing_trades']}")
+    print(f"กำไร/ขาดทุนรวม: {portfolio_values[-1] - trades_df['portfolio_value'].iloc[0]:.2f} ({metrics.get('total_return', 0):.2f}%)")
+    print(f"Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.4f}")
+    print(f"Max Drawdown: {metrics.get('max_drawdown', 0):.2f}%")
+    print(f"Win Rate: {metrics.get('win_rate', 0):.2f}%")
+    print(f"จำนวนการเทรดทั้งหมด: {metrics.get('total_trades', 0)}")
+    print(f"จำนวนการเทรดที่ทำกำไร: {metrics.get('winning_trades', 0)}")
+    print(f"จำนวนการเทรดที่ขาดทุน: {metrics.get('losing_trades', 0)}")
     
     # สร้างกราฟผลการทดสอบ
     if args.plot:
