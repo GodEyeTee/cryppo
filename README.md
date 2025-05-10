@@ -175,7 +175,7 @@ data_manager = MarketDataManager(
 ### เทรนโมเดล:
 
 ```bash
-python -m src.cli.main train model --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet --output models/btcusdt --model-type double_dqn --window-size 60 --batch-size 128 --epochs 100 --learning-rate 0.0001 --use-gpu
+python -m src.cli.main train model --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet --output models/btcusdt --model-type double_dqn --window-size 60 --batch-size 128 --epochs 5 --learning-rate 0.0001 --use-gpu
 ```
 
 ### Backtest:
