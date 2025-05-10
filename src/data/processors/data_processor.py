@@ -69,6 +69,66 @@ class DataProcessor:
         logger.info(f"กำลังใช้อุปกรณ์: {self.device}")
         logger.info(f"Log Transform: {self.use_log_transform}, Z-score: {self.use_z_score}")
     
+    def process_directory(
+        self,
+        input_dir: str,
+        output_dir: str,
+        file_pattern: str = "*.csv",
+        additional_indicators: Optional[List[str]] = None
+    ) -> List[str]:
+        """
+        ประมวลผลไฟล์ทั้งหมดในไดเรกทอรี
+        
+        Parameters:
+        input_dir (str): ไดเรกทอรีที่มีไฟล์ข้อมูลนำเข้า
+        output_dir (str): ไดเรกทอรีสำหรับไฟล์ผลลัพธ์
+        file_pattern (str): รูปแบบไฟล์ที่ต้องการประมวลผล (เช่น "*.csv", "*.parquet")
+        additional_indicators (List[str], optional): รายการตัวชี้วัดเพิ่มเติมที่ต้องการคำนวณ
+        
+        Returns:
+        List[str]: รายการไฟล์ที่ประมวลผลแล้ว
+        """
+        import glob
+        import os
+        from pathlib import Path
+        
+        # ตรวจสอบว่าไดเรกทอรีนำเข้ามีอยู่หรือไม่
+        if not os.path.exists(input_dir):
+            logger.error(f"ไม่พบไดเรกทอรีนำเข้า: {input_dir}")
+            return []
+        
+        # สร้างไดเรกทอรีสำหรับไฟล์ผลลัพธ์
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # ค้นหาไฟล์ทั้งหมดที่ตรงกับรูปแบบ
+        search_pattern = os.path.join(input_dir, file_pattern)
+        files = glob.glob(search_pattern)
+        
+        if not files:
+            logger.warning(f"ไม่พบไฟล์ที่ตรงกับรูปแบบ {file_pattern} ในไดเรกทอรี {input_dir}")
+            return []
+        
+        # ประมวลผลไฟล์แต่ละไฟล์
+        processed_files = []
+        
+        for file_path in files:
+            file_name = os.path.basename(file_path)
+            output_path = os.path.join(output_dir, file_name)
+            
+            # เปลี่ยนนามสกุลไฟล์เป็น .parquet ถ้าต้องการ
+            if output_path.endswith('.csv') and self.config.extract_subconfig("preprocessing").get("output_format") == "parquet":
+                output_path = os.path.splitext(output_path)[0] + '.parquet'
+            
+            # ประมวลผลไฟล์
+            df = self.process_file(file_path, output_path, additional_indicators)
+            
+            if not df.empty:
+                processed_files.append(output_path)
+        
+        logger.info(f"ประมวลผลไฟล์ทั้งหมด {len(processed_files)} ไฟล์")
+        
+        return processed_files
+    
     def process_file(
         self,
         input_file: str,
