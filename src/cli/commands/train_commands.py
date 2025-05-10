@@ -162,6 +162,24 @@ def handle_model(args):
     model.save(model_path)
     
     logger.info(f"บันทึกโมเดลที่: {model_path}")
+     # แสดงข้อมูลสำคัญเพื่อการดีบัก
+    logger.info(f"ข้อมูลมีคอลัมน์: {data_manager.data.columns.tolist()}")
+    logger.info(f"รูปร่างของข้อมูล: {data_manager.data.shape}")
+    
+    # คำนวณ input_size ที่ถูกต้อง
+    feature_columns = [col for col in data_manager.data.columns if col != 'timestamp' and not pd.isna(col)]
+    input_size = len(feature_columns)
+    logger.info(f"จำนวนคุณลักษณะที่จะใช้: {input_size}")
+
+    print("Shape of data:", data_manager.data.shape)
+    print("Columns:", data_manager.data.columns.tolist())
+    
+    # สร้างโมเดล
+    model = ModelFactory.create_model(
+        model_type=model_config.get("model_type"),
+        input_size=input_size,  # ใช้ input_size ที่คำนวณแล้ว
+        config=config
+    )
     
     # ประเมินโมเดลกับชุดข้อมูล test
     metrics = model.evaluate(training_data["test_loader"])

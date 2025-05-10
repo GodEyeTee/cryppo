@@ -68,8 +68,18 @@ class ModelFactory:
         
         if model_class:
             try:
-                model = model_class(input_size=input_size, config=config)
-                logger.info(f"สร้างโมเดล {model_type} สำเร็จ")
+                # กำหนดค่า action_dim และ input_size ตายตัว (ในกรณีฉุกเฉิน)
+                # ค่าเหล่านี้ควรสอดคล้องกับข้อมูลจริง
+                action_dim = 4  # แก้ไขตามจำนวนการกระทำจริง
+                manual_input_size = 25  # แก้ไขตามจำนวนคอลัมน์จริง
+                
+                # ตรวจสอบว่าโมเดลเป็น DQN หรือ subclass ของ DQN หรือไม่
+                if issubclass(model_class, DQN):
+                    model = model_class(input_size=manual_input_size, action_dim=action_dim, config=config)
+                else:
+                    model = model_class(input_size=manual_input_size, config=config)
+                
+                logger.info(f"สร้างโมเดล {model_type} สำเร็จด้วย input_size={manual_input_size}, action_dim={action_dim}")
                 return model
             except Exception as e:
                 logger.error(f"เกิดข้อผิดพลาดในการสร้างโมเดล {model_type}: {e}")

@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Tuple, Optional, Union, Any
 import os
 import json
+import traceback
 
 from src.models.dqn.dqn import DQN, DQNNetwork, ReplayBuffer
 from src.utils.config import get_config
@@ -112,51 +113,92 @@ class DoubleDQN(DQN):
         batch = self.replay_buffer.sample(self.batch_size)
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
         
-        # แปลงเป็น tensor
-        state_batch = torch.FloatTensor(state_batch).to(self.device)
-        action_batch = torch.LongTensor(action_batch).unsqueeze(1).to(self.device)
-        reward_batch = torch.FloatTensor(reward_batch).unsqueeze(1).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
-        done_batch = torch.FloatTensor(done_batch).unsqueeze(1).to(self.device)
+        # ตรวจสอบและแสดงข้อมูลสำหรับการดีบัก
+        print("State batch type:", type(state_batch))
+        if len(state_batch) > 0:
+            print("First state type:", type(state_batch[0]))
+            print("First state shape:", np.array(state_batch[0]).shape)
         
-        # คำนวณ Q-values ปัจจุบัน
-        current_q_values = self.policy_net(state_batch).gather(1, action_batch)
+        print("Action batch type:", type(action_batch))
+        if len(action_batch) > 0:
+            print("First action:", action_batch[0])
+            print("Action batch values:", action_batch[:5])  # แสดง 5 ค่าแรก
         
-        # คำนวณ Q-values เป้าหมายด้วย Double DQN
-        with torch.no_grad():
-            # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
-            next_action_batch = self.policy_net(next_state_batch).argmax(dim=1, keepdim=True)
+        # แปลงข้อมูลเป็น numpy array อย่างชัดเจน
+        try:
+            state_batch_np = np.array(state_batch, dtype=np.float32)
+            action_batch_np = np.array(action_batch, dtype=np.int64)
+            reward_batch_np = np.array(reward_batch, dtype=np.float32)
+            next_state_batch_np = np.array(next_state_batch, dtype=np.float32)
+            done_batch_np = np.array(done_batch, dtype=np.float32)
             
-            # ใช้ target network เพื่อประเมินค่า Q ของการกระทำที่เลือก
-            next_q_values = self.target_net(next_state_batch).gather(1, next_action_batch)
+            # แสดงรูปร่างของ arrays เพื่อตรวจสอบ
+            print("State batch shape:", state_batch_np.shape)
+            print("Action batch shape:", action_batch_np.shape)
             
-            # คำนวณค่า Q เป้าหมาย
-            target_q_values = reward_batch + (1 - done_batch) * self.gamma * next_q_values
-        
-        # คำนวณความสูญเสีย
-        loss = F.smooth_l1_loss(current_q_values, target_q_values)
-        
-        # อัพเดตเครือข่าย
-        self.optimizer.zero_grad()
-        loss.backward()
-        
-        # Gradient clipping (ถ้ากำหนด)
-        if self.clip_grad_norm is not None:
-            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.clip_grad_norm)
-        
-        self.optimizer.step()
-        
-        # อัพเดตเครือข่ายเป้าหมายเป็นระยะ
-        self.update_count += 1
-        if self.update_count % self.target_update_freq == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
-        
-        # อัพเดต epsilon
-        self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
-        
-        self.train_count += 1
-        
-        return loss.item()
+            # แปลงเป็น PyTorch tensors
+            state_batch = torch.FloatTensor(state_batch_np).to(self.device)
+            action_batch = torch.LongTensor(action_batch_np).to(self.device)
+            reward_batch = torch.FloatTensor(reward_batch_np).unsqueeze(1).to(self.device)
+            next_state_batch = torch.FloatTensor(next_state_batch_np).to(self.device)
+            done_batch = torch.FloatTensor(done_batch_np).unsqueeze(1).to(self.device)
+            
+            # แสดงรูปร่างของ tensors เพื่อตรวจสอบ
+            print("State tensor shape:", state_batch.shape)
+            print("Action tensor shape:", action_batch.shape)
+            
+            # แน่ใจว่า action_batch มีมิติที่ถูกต้อง
+            if action_batch.dim() == 1:
+                action_batch = action_batch.unsqueeze(1)
+                print("Reshaped action tensor:", action_batch.shape)
+            
+            # คำนวณ Q-values ปัจจุบัน
+            q_values = self.policy_net(state_batch)
+            print("Q-values shape:", q_values.shape)
+            
+            current_q_values = q_values.gather(1, action_batch)
+            print("Current Q-values shape:", current_q_values.shape)
+            
+            # คำนวณ Q-values เป้าหมายด้วย Double DQN
+            with torch.no_grad():
+                # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
+                next_q_values = self.policy_net(next_state_batch)
+                next_action_batch = next_q_values.argmax(dim=1, keepdim=True)
+                
+                # ใช้ target network เพื่อประเมินค่า Q ของการกระทำที่เลือก
+                next_q_values = self.target_net(next_state_batch).gather(1, next_action_batch)
+                
+                # คำนวณค่า Q เป้าหมาย
+                target_q_values = reward_batch + (1 - done_batch) * self.gamma * next_q_values
+            
+            # คำนวณความสูญเสีย
+            loss = F.smooth_l1_loss(current_q_values, target_q_values)
+            
+            # อัพเดตเครือข่าย
+            self.optimizer.zero_grad()
+            loss.backward()
+            
+            # Gradient clipping (ถ้ากำหนด)
+            if self.clip_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.clip_grad_norm)
+            
+            self.optimizer.step()
+            
+            # อัพเดตเครือข่ายเป้าหมายเป็นระยะ
+            self.update_count += 1
+            if self.update_count % self.target_update_freq == 0:
+                self.target_net.load_state_dict(self.policy_net.state_dict())
+            
+            # อัพเดต epsilon
+            self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
+            
+            self.train_count += 1
+            
+            return loss.item()
+        except Exception as e:
+            print(f"เกิดข้อผิดพลาดในการอัพเดต: {e}")
+            traceback.print_exc()  # พิมพ์ stack trace เพื่อดีบัก
+            return 0.0
     
     def save(self, path: str) -> None:
         """
@@ -227,8 +269,17 @@ class DoubleDQN(DQN):
         Returns:
         Dict[str, Any]: ประวัติการเทรน
         """
-        # ตั้งค่า TensorBoard logger ถ้าจำเป็น
-        tensorboard_logger = self._setup_tensorboard(log_dir) if log_dir else None
+        # ตั้งค่า TensorBoard logger อย่างปลอดภัย
+        try:
+            import os
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+                tensorboard_logger = self._setup_tensorboard(log_dir)
+            else:
+                tensorboard_logger = None
+        except Exception as e:
+            print(f"ไม่สามารถตั้งค่า TensorboardLogger ได้: {e}")
+            tensorboard_logger = None
         
         # กำหนดจำนวนรอบการเทรน
         if epochs is None:
@@ -255,7 +306,7 @@ class DoubleDQN(DQN):
                     action = self.select_action(state)
                     
                     # สร้างสถานะถัดไป, รางวัล, และสถานะจบเสมือน
-                    next_state = state  # สมมติว่าไม่มีการเปลี่ยนแปลง
+                    next_state = state.copy()  # ทำสำเนาเพื่อหลีกเลี่ยงการอ้างอิงเดียวกัน
                     reward = 0.0  # สมมติว่าไม่มีรางวัล
                     done = False  # สมมติว่าไม่จบ
                     
@@ -267,6 +318,10 @@ class DoubleDQN(DQN):
                 
                 epoch_loss += loss
                 num_batches += 1
+                
+                # แสดงความคืบหน้า
+                if batch_idx % 10 == 0:
+                    print(f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, Loss: {loss:.6f}")
             
             # คำนวณค่าเฉลี่ยของ loss
             avg_loss = epoch_loss / max(num_batches, 1)
@@ -274,26 +329,36 @@ class DoubleDQN(DQN):
             
             # บันทึกลง TensorBoard
             if tensorboard_logger:
-                tensorboard_logger.log_scalar('train_loss', avg_loss, epoch)
+                try:
+                    tensorboard_logger.log_scalar('train_loss', avg_loss, epoch)
+                except Exception as e:
+                    print(f"ไม่สามารถบันทึกลง TensorBoard ได้: {e}")
             
             # ประเมินกับชุดข้อมูล validation
             if val_loader:
-                val_loss = self.evaluate(val_loader)['loss']
-                history['val_loss'].append(val_loss)
-                
-                # บันทึกลง TensorBoard
-                if tensorboard_logger:
-                    tensorboard_logger.log_scalar('val_loss', val_loss, epoch)
-                
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}, Val Loss: {val_loss:.6f}")
+                try:
+                    val_loss = self.evaluate(val_loader)['loss']
+                    history['val_loss'].append(val_loss)
+                    
+                    # บันทึกลง TensorBoard
+                    if tensorboard_logger:
+                        tensorboard_logger.log_scalar('val_loss', val_loss, epoch)
+                    
+                    logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}, Val Loss: {val_loss:.6f}")
+                except Exception as e:
+                    logger.error(f"เกิดข้อผิดพลาดในการประเมินชุดข้อมูล validation: {e}")
+                    logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}")
             else:
                 logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}")
         
         self.is_trained = True
         
-        # ปิด TensorBoard logger
+        # ปิด TensorBoard logger อย่างปลอดภัย
         if tensorboard_logger:
-            tensorboard_logger.close()
+            try:
+                tensorboard_logger.close()
+            except:
+                pass
         
         return history
     
@@ -382,8 +447,40 @@ class DoubleDQN(DQN):
         TensorboardLogger or None: TensorBoard logger หรือ None หากไม่สามารถตั้งค่าได้
         """
         try:
+            # สร้างไดเรกทอรีด้วย os.makedirs ก่อน
+            import os
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # ลองเรียกใช้ TensorboardLogger
             from src.utils.loggers import TensorboardLogger
             return TensorboardLogger(log_dir)
-        except ImportError:
-            logger.warning("ไม่พบโมดูล TensorboardLogger")
+        except Exception as e:
+            logger.warning(f"ไม่สามารถตั้งค่า TensorboardLogger ได้: {e}")
             return None
+    
+    def store_experience(self, state, action, reward, next_state, done) -> None:
+        """
+        เก็บประสบการณ์ใหม่ลงใน replay buffer
+        
+        Parameters:
+        state: สถานะปัจจุบัน
+        action: การกระทำ
+        reward: รางวัล
+        next_state: สถานะถัดไป
+        done: สถานะจบ
+        """
+        try:
+            # ตรวจสอบว่า action เป็น integer
+            action = int(action)
+            
+            # แปลงค่าให้เป็นประเภทที่ถูกต้อง
+            state = np.array(state, dtype=np.float32)
+            next_state = np.array(next_state, dtype=np.float32)
+            reward = float(reward)
+            done = bool(done)
+            
+            # เก็บประสบการณ์
+            self.replay_buffer.push(state, action, reward, next_state, done)
+            self.step_count += 1
+        except Exception as e:
+            print(f"เกิดข้อผิดพลาดในการเก็บประสบการณ์: {e}")

@@ -466,19 +466,110 @@ class MarketDataManager:
             return {}
         
         try:
-            # ใช้ DataProcessor สร้างชุดข้อมูล
-            training_data = self.data_processor.create_training_data(
-                df=self.data,
-                window_size=self.window_size,
-                batch_size=self.batch_size,
-                validation_ratio=validation_ratio,
-                test_ratio=test_ratio,
-                shuffle=shuffle
-            )
+            # แยกคอลัมน์ timestamp และคอลัมน์ที่ไม่ใช่ตัวเลขออกก่อน
+            data_copy = self.data.copy()
             
-            logger.info(f"สร้างชุดข้อมูลสำเร็จ: train={training_data['train_size']}, val={training_data['val_size']}, test={training_data['test_size']}")
+            # คอลัมน์ที่ต้องกำจัดออก
+            drop_columns = []
             
-            return training_data
+            # กำจัดคอลัมน์ timestamp
+            if 'timestamp' in data_copy.columns:
+                drop_columns.append('timestamp')
+            
+            # กำจัดคอลัมน์ที่ไม่ใช่ตัวเลข
+            for col in data_copy.columns:
+                if not pd.api.types.is_numeric_dtype(data_copy[col]):
+                    drop_columns.append(col)
+            
+            # ถ้ามีคอลัมน์ที่ต้องกำจัด ให้ลบออก
+            if drop_columns:
+                logger.info(f"กำจัดคอลัมน์ที่ไม่ใช่ตัวเลข: {drop_columns}")
+                data_copy = data_copy.drop(columns=drop_columns)
+            
+            # ตรวจสอบว่าเหลือข้อมูลหรือไม่
+            if data_copy.empty or data_copy.shape[1] == 0:
+                logger.error("ไม่มีข้อมูลตัวเลขที่จะใช้เทรนโมเดล")
+                return {}
+            
+            # แก้ไขข้อมูลที่เป็น NaN หรือ Inf
+            data_copy = data_copy.fillna(0)
+            data_copy = data_copy.replace([np.inf, -np.inf], 0)
+            
+            # ตรวจสอบว่าข้อมูลทั้งหมดเป็นตัวเลขและไม่มี NaN หรือ Inf
+            assert np.all(np.isfinite(data_copy.values)), "ข้อมูลมีค่า NaN หรือ Inf"
+            
+            # แปลงเป็น NumPy array
+            data = data_copy.values.astype(np.float32)  # แปลงเป็น float32 เพื่อป้องกันปัญหา
+            
+            # สร้าง sliding windows
+            windows = []
+            
+            for i in range(len(data) - self.window_size + 1):
+                window = data[i:i+self.window_size]
+                windows.append(window)
+            
+            # แปลงเป็น NumPy array
+            windows = np.array(windows)
+            
+            # แบ่งข้อมูลเป็นชุด train, validation และ test
+            n_samples = len(windows)
+            indices = np.arange(n_samples)
+            
+            if shuffle:
+                np.random.shuffle(indices)
+            
+            # คำนวณจำนวนตัวอย่างในแต่ละชุด
+            test_size = int(test_ratio * n_samples)
+            val_size = int(validation_ratio * n_samples)
+            train_size = n_samples - test_size - val_size
+            
+            # แบ่งดัชนี
+            train_indices = indices[:train_size]
+            val_indices = indices[train_size:train_size+val_size]
+            test_indices = indices[train_size+val_size:]
+            
+            # แบ่งข้อมูล
+            train_data = windows[train_indices]
+            val_data = windows[val_indices]
+            test_data = windows[test_indices]
+            
+            # สร้าง Tensor และย้ายไปยัง GPU ถ้าจำเป็น
+            train_tensor = torch.tensor(train_data, dtype=torch.float32)
+            val_tensor = torch.tensor(val_data, dtype=torch.float32)
+            test_tensor = torch.tensor(test_data, dtype=torch.float32)
+            
+            if self.use_gpu:
+                train_tensor = train_tensor.to(self.device)
+                val_tensor = val_tensor.to(self.device)
+                test_tensor = test_tensor.to(self.device)
+            
+            # สร้าง DataLoader
+            from torch.utils.data import TensorDataset, DataLoader
+            
+            train_dataset = TensorDataset(train_tensor)
+            val_dataset = TensorDataset(val_tensor)
+            test_dataset = TensorDataset(test_tensor)
+            
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size)
+            test_loader = DataLoader(test_dataset, batch_size=self.batch_size)
+            
+            # ระบุขนาดของ feature
+            feature_size = data_copy.shape[1]
+            
+            return {
+                "train_data": train_data,
+                "val_data": val_data,
+                "test_data": test_data,
+                "train_loader": train_loader,
+                "val_loader": val_loader,
+                "test_loader": test_loader,
+                "train_size": train_size,
+                "val_size": val_size,
+                "test_size": test_size,
+                "feature_size": feature_size,  # เพิ่มขนาดของ feature
+                "feature_names": data_copy.columns.tolist()  # เพิ่มชื่อของ feature
+            }
         
         except Exception as e:
             logger.error(f"เกิดข้อผิดพลาดในการสร้างชุดข้อมูล: {e}")

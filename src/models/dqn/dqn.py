@@ -92,6 +92,9 @@ class DQNNetwork(nn.Module):
         dropout_rate (float): อัตราการ dropout
         """
         super(DQNNetwork, self).__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
         
         # กำหนดฟังก์ชันกระตุ้น
         if activation == 'relu':
@@ -134,6 +137,9 @@ class DQNNetwork(nn.Module):
         Returns:
         torch.Tensor: เอาต์พุต (Q-values)
         """
+        if x.shape[-1] != self.input_dim:
+            raise ValueError(f"ขนาดของอินพุตไม่ถูกต้อง: คาดหวัง {self.input_dim} คอลัมน์ แต่ได้รับ {x.shape[-1]} คอลัมน์")
+        
         return self.network(x)
 
 class DQN:
