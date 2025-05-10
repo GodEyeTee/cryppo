@@ -2,14 +2,25 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from mpl_finance import candlestick_ohlc
 import logging
 from typing import Dict, List, Tuple, Optional, Union, Any
 import io
 from PIL import Image
 from datetime import datetime
 
-from src.utils.config import get_config
+# ใช้ mplfinance แทน mpl_finance ที่ไม่ได้ใช้งานแล้ว
+import mplfinance as mpf
+
+# ลองนำเข้า get_config จาก src.utils.config_manager แทน src.utils.config
+try:
+    from src.utils.config_manager import get_config
+except ImportError:
+    try:
+        from src.utils.config import get_config
+    except ImportError:
+        # ถ้าไม่พบทั้งสองที่ ให้สร้างฟังก์ชันปลอมขึ้นมา
+        def get_config():
+            return {}
 
 # ตั้งค่า logger
 logger = logging.getLogger(__name__)
@@ -41,11 +52,15 @@ class Renderer:
         self.config = config if config is not None else get_config()
         
         # ดึงการตั้งค่าที่เกี่ยวข้อง
-        # ดึงการตั้งค่าที่เกี่ยวข้อง
-        env_config = self.config.extract_subconfig("environment")
+        env_config = {}
+        if hasattr(self.config, 'extract_subconfig'):
+            env_config = self.config.extract_subconfig("environment")
         
         # กำหนดค่าพารามิเตอร์
-        self.render_mode = render_mode or env_config.get("render_mode", "console")
+        self.render_mode = render_mode
+        if isinstance(env_config, dict) and "render_mode" in env_config:
+            self.render_mode = env_config.get("render_mode")
+        
         self.figure_size = figure_size
         self.dpi = dpi
         
@@ -311,7 +326,7 @@ class Renderer:
     
     def render_candlestick(self, ohlc_data: pd.DataFrame, **kwargs) -> plt.Figure:
         """
-        แสดงผลกราฟแท่งเทียน
+        แสดงผลกราฟแท่งเทียน (ใช้ mplfinance)
         
         Parameters:
         ohlc_data (pd.DataFrame): ข้อมูล OHLC
@@ -325,63 +340,64 @@ class Renderer:
         
         # ตรวจสอบว่ามีคอลัมน์ที่จำเป็นหรือไม่
         required_columns = ['open', 'high', 'low', 'close']
-        missing_columns = [col for col in required_columns if col not in df.columns]
+        missing_columns = []
+        for col in required_columns:
+            if not any(c.lower() == col for c in df.columns):
+                missing_columns.append(col)
         
         if missing_columns:
             logger.error(f"ข้อมูล OHLC ขาดคอลัมน์ที่จำเป็น: {missing_columns}")
             return None
         
-        # เตรียมข้อมูลสำหรับ candlestick_ohlc
-        if 'timestamp' in df.columns or 'date' in df.columns:
-            # ใช้ timestamp หรือ date เป็นดัชนี
-            date_col = 'timestamp' if 'timestamp' in df.columns else 'date'
-            
-            # แปลงเป็น matplotlib dates
-            df['date_num'] = mdates.date2num(df[date_col])
-            
-            # เตรียมข้อมูล OHLC
-            ohlc = df[['date_num', 'open', 'high', 'low', 'close']].values
-        else:
-            # ใช้ลำดับเป็นดัชนี
-            df['index'] = np.arange(len(df))
-            
-            # เตรียมข้อมูล OHLC
-            ohlc = df[['index', 'open', 'high', 'low', 'close']].values
+        # แปลงชื่อคอลัมน์ให้ตรงกับรูปแบบที่ mplfinance ต้องการ
+        rename_dict = {}
+        for col in df.columns:
+            if col.lower() == 'open':
+                rename_dict[col] = 'Open'
+            elif col.lower() == 'high':
+                rename_dict[col] = 'High'
+            elif col.lower() == 'low':
+                rename_dict[col] = 'Low'
+            elif col.lower() == 'close':
+                rename_dict[col] = 'Close'
+            elif col.lower() == 'volume':
+                rename_dict[col] = 'Volume'
+        
+        if rename_dict:
+            df = df.rename(columns=rename_dict)
+        
+        # ตั้งดัชนีเป็นวันที่ถ้ามี
+        if 'timestamp' in df.columns:
+            df = df.set_index('timestamp')
+        elif 'date' in df.columns:
+            df = df.set_index('date')
+        
+        # ตรวจสอบว่าดัชนีเป็นประเภทวันที่หรือไม่
+        if not isinstance(df.index, pd.DatetimeIndex) and ('timestamp' in df.columns or 'date' in df.columns):
+            try:
+                df.index = pd.to_datetime(df.index)
+            except:
+                # ถ้าแปลงเป็นวันที่ไม่ได้ ให้ใช้ดัชนีตัวเลขแทน
+                df = df.reset_index(drop=True)
+        
+        # ตั้งค่าพารามิเตอร์สำหรับ mplfinance
+        title = kwargs.get('title', 'Candlestick Chart')
+        style = kwargs.get('style', 'yahoo')
+        figsize = kwargs.get('figsize', self.figure_size)
         
         # สร้างรูปภาพ
-        fig, ax = plt.subplots(figsize=self.figure_size, dpi=self.dpi)
+        fig, axes = mpf.plot(
+            df,
+            type='candle',
+            style=style,
+            title=title,
+            figsize=figsize,
+            volume=True if 'Volume' in df.columns else False,
+            panel_ratios=(4, 1) if 'Volume' in df.columns else None,
+            returnfig=True
+        )
         
-        # พลอต candlestick
-        candlestick_ohlc(ax, ohlc, width=0.6, colorup='green', colordown='red', alpha=0.8)
-        
-        # ตั้งค่าแกน x
-        if 'timestamp' in df.columns or 'date' in df.columns:
-            date_col = 'timestamp' if 'timestamp' in df.columns else 'date'
-            
-            # รูปแบบวันที่
-            date_format = kwargs.get('date_format', '%Y-%m-%d')
-            
-            # ตั้งค่าแกน x
-            ax.xaxis.set_major_formatter(mdates.DateFormatter(date_format))
-            
-            # หมุนป้ายแกน x
-            plt.xticks(rotation=45)
-        
-        # ตั้งค่าชื่อแกน
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Price')
-        
-        # ตั้งค่าชื่อกราฟ
-        title = kwargs.get('title', 'Candlestick Chart')
-        ax.set_title(title)
-        
-        # ตั้งค่ากริด
-        ax.grid(True)
-        
-        # ปรับระยะห่าง
-        plt.tight_layout()
-        
-        return fig
+        return fig[0]  # คืน Figure object
     
     def close(self) -> None:
         """

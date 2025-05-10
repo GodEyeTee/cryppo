@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from src.environment.base_env import BaseEnv
 from src.environment.simulators.trading_simulator import TradingSimulator
 from src.environment.renderers.renderer import Renderer
-from src.data.data_manager import MarketDataManager
+from src.data.managers.data_manager import MarketDataManager
 from src.utils.config import get_config
 
 # ตั้งค่า logger
