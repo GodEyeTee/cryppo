@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import pandas as pd
 
-from src.data.data_manager import MarketDataManager
+from src.data.managers.data_manager import MarketDataManager
 from src.environment.trading_env import TradingEnv
 from src.models.model_factory import ModelFactory
 from src.utils.config_manager import get_config
