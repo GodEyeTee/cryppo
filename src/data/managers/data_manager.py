@@ -619,3 +619,198 @@ class MarketDataManager:
         except Exception as e:
             logger.error(f"เกิดข้อผิดพลาดในการกรองข้อมูล: {e}")
             return False
+    
+    def get_timeseries_stats(self, column_name: str) -> Dict[str, Any]:
+        """
+        คำนวณสถิติของข้อมูล time series
+        
+        Parameters:
+        column_name (str): ชื่อคอลัมน์ที่ต้องการวิเคราะห์
+        
+        Returns:
+        Dict[str, Any]: สถิติต่างๆ ของคอลัมน์ที่ระบุ
+        """
+        if not self.data_loaded or self.raw_data is None:
+            logger.error("ยังไม่ได้โหลดข้อมูล")
+            return {}
+        
+        if column_name not in self.raw_data.columns:
+            logger.error(f"ไม่พบคอลัมน์: {column_name}")
+            return {}
+        
+        try:
+            # ดึงข้อมูลคอลัมน์ที่ต้องการ
+            data = self.raw_data[column_name]
+            
+            # สถิติพื้นฐาน
+            stats = {
+                "mean": data.mean(),
+                "std": data.std(),
+                "min": data.min(),
+                "25%": data.quantile(0.25),
+                "50%": data.median(),
+                "75%": data.quantile(0.75),
+                "max": data.max(),
+                "count": len(data),
+                "missing": data.isnull().sum(),
+                "skewness": data.skew(),
+                "kurtosis": data.kurt()
+            }
+            
+            # สถิติของการเปลี่ยนแปลง
+            pct_change = data.pct_change().dropna()
+            stats.update({
+                "return_mean": pct_change.mean(),
+                "return_std": pct_change.std(),
+                "return_min": pct_change.min(),
+                "return_max": pct_change.max(),
+                "volatility": pct_change.std() * (252 ** 0.5)  # Annualized volatility (assuming daily data)
+            })
+            
+            # ทดสอบ stationarity (Augmented Dickey-Fuller test)
+            try:
+                from statsmodels.tsa.stattools import adfuller
+                adf_result = adfuller(data.dropna())
+                stats["adf_test"] = {
+                    "adf_statistic": adf_result[0],
+                    "p_value": adf_result[1],
+                    "is_stationary": adf_result[1] < 0.05
+                }
+            except ImportError:
+                logger.warning("ไม่สามารถทำ ADF test ได้: ไม่พบโมดูล statsmodels")
+            except Exception as e:
+                logger.warning(f"ไม่สามารถทำ ADF test ได้: {e}")
+            
+            # คำนวณ autocorrelation
+            try:
+                from statsmodels.tsa.stattools import acf
+                acf_result = acf(data.dropna(), nlags=10)
+                stats["autocorrelation"] = {
+                    "lag_1": acf_result[1] if len(acf_result) > 1 else None,
+                    "lag_5": acf_result[5] if len(acf_result) > 5 else None,
+                    "lag_10": acf_result[10] if len(acf_result) > 10 else None
+                }
+            except ImportError:
+                logger.warning("ไม่สามารถคำนวณ autocorrelation ได้: ไม่พบโมดูล statsmodels")
+            except Exception as e:
+                logger.warning(f"ไม่สามารถคำนวณ autocorrelation ได้: {e}")
+            
+            return stats
+        
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการคำนวณสถิติ: {e}")
+            return {}
+    
+    def get_correlation_matrix(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        """
+        คำนวณเมทริกซ์สหสัมพันธ์ของคอลัมน์ที่ระบุ
+        
+        Parameters:
+        columns (List[str], optional): รายการคอลัมน์ที่ต้องการคำนวณสหสัมพันธ์
+        
+        Returns:
+        pd.DataFrame: เมทริกซ์สหสัมพันธ์
+        """
+        if not self.data_loaded or self.raw_data is None:
+            logger.error("ยังไม่ได้โหลดข้อมูล")
+            return pd.DataFrame()
+        
+        try:
+            # ถ้าไม่ระบุคอลัมน์ ให้ใช้คอลัมน์ตัวเลขทั้งหมด
+            if columns is None:
+                # เลือกคอลัมน์ตัวเลขเท่านั้น
+                numeric_cols = self.raw_data.select_dtypes(include=np.number).columns
+                
+                # ไม่รวมคอลัมน์ timestamp และอื่นๆ ที่ไม่เกี่ยวข้อง
+                exclude_cols = ['timestamp', 'date', 'time', 'close_time']
+                columns = [col for col in numeric_cols if col not in exclude_cols]
+            else:
+                # ตรวจสอบคอลัมน์ที่ระบุ
+                invalid_cols = [col for col in columns if col not in self.raw_data.columns]
+                if invalid_cols:
+                    logger.warning(f"ไม่พบคอลัมน์: {', '.join(invalid_cols)}")
+                    columns = [col for col in columns if col in self.raw_data.columns]
+            
+            # คำนวณเมทริกซ์สหสัมพันธ์
+            return self.raw_data[columns].corr()
+        
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการคำนวณเมทริกซ์สหสัมพันธ์: {e}")
+            return pd.DataFrame()
+
+    def get_period_stats(self, period: str = 'daily') -> pd.DataFrame:
+        """
+        วิเคราะห์สถิติตามช่วงเวลา
+        
+        Parameters:
+        period (str): ช่วงเวลาที่ต้องการวิเคราะห์ ('daily', 'weekly', 'monthly', 'hourly')
+        
+        Returns:
+        pd.DataFrame: DataFrame ของสถิติตามช่วงเวลา
+        """
+        if not self.data_loaded or self.raw_data is None:
+            logger.error("ยังไม่ได้โหลดข้อมูล")
+            return pd.DataFrame()
+        
+        if 'timestamp' not in self.raw_data.columns:
+            logger.error("ไม่พบคอลัมน์ timestamp")
+            return pd.DataFrame()
+        
+        try:
+            # สร้าง DataFrame สำหรับการวิเคราะห์
+            df = self.raw_data.copy()
+            
+            # ตั้งช่วงเวลา
+            if period == 'daily':
+                df['period'] = df['timestamp'].dt.date
+            elif period == 'weekly':
+                df['period'] = df['timestamp'].dt.to_period('W').dt.start_time
+            elif period == 'monthly':
+                df['period'] = df['timestamp'].dt.to_period('M').dt.start_time
+            elif period == 'hourly':
+                df['period'] = df['timestamp'].dt.floor('H')
+            else:
+                logger.error(f"ช่วงเวลาไม่รองรับ: {period}")
+                return pd.DataFrame()
+            
+            # สถิติที่ต้องการคำนวณ
+            stats = []
+            
+            # วิเคราะห์แต่ละช่วงเวลา
+            for period_val, group in df.groupby('period'):
+                # สถิติพื้นฐาน
+                open_price = group['open'].iloc[0]
+                high_price = group['high'].max()
+                low_price = group['low'].min()
+                close_price = group['close'].iloc[-1]
+                volume = group['volume'].sum()
+                
+                # คำนวณผลตอบแทน
+                returns = (close_price - open_price) / open_price * 100
+                
+                # เพิ่มสถิติในช่วงเวลานี้
+                stats.append({
+                    'period': period_val,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'volume': volume,
+                    'returns': returns,
+                    'range': high_price - low_price,
+                    'volatility': group['close'].pct_change().std() * 100,
+                    'trades': group['trades'].sum() if 'trades' in group.columns else None,
+                    'candles': len(group)
+                })
+            
+            # สร้าง DataFrame จากสถิติ
+            stats_df = pd.DataFrame(stats)
+            
+            # เรียงลำดับตามช่วงเวลา
+            stats_df = stats_df.sort_values('period')
+            
+            return stats_df
+        
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการวิเคราะห์สถิติตามช่วงเวลา: {e}")
+            return pd.DataFrame()

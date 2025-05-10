@@ -125,7 +125,7 @@ def handle_model(args):
     # สร้างโมเดล
     model = ModelFactory.create_model(
         model_type=model_config.get("model_type"),
-        input_size=training_data["feature_size"],
+        input_size=data_manager.data.shape[1] if 'timestamp' not in data_manager.data.columns else data_manager.data.shape[1] - 1,
         config=config
     )
     
