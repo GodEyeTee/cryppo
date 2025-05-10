@@ -87,7 +87,7 @@ $ pip install -r requirements.txt
 ### ดาวน์โหลดข้อมูล
 
 ```bash
-python scripts/download_data.py \
+python -m src.cli.main data download \
   --symbol BTCUSDT \
   --timeframe 1m \
   --start 2023-01-01 \
