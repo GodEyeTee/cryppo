@@ -109,23 +109,23 @@ class DoubleDQN(DQN):
         if len(self.replay_buffer) < self.batch_size:
             return 0.0
         
-        # สุ่มตัวอย่าง batch จาก replay buffer
-        batch = self.replay_buffer.sample(self.batch_size)
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
-        
-        # ตรวจสอบและแสดงข้อมูลสำหรับการดีบัก
-        print("State batch type:", type(state_batch))
-        if len(state_batch) > 0:
-            print("First state type:", type(state_batch[0]))
-            print("First state shape:", np.array(state_batch[0]).shape)
-        
-        print("Action batch type:", type(action_batch))
-        if len(action_batch) > 0:
-            print("First action:", action_batch[0])
-            print("Action batch values:", action_batch[:5])  # แสดง 5 ค่าแรก
-        
-        # แปลงข้อมูลเป็น numpy array อย่างชัดเจน
         try:
+            # สุ่มตัวอย่าง batch จาก replay buffer
+            batch = self.replay_buffer.sample(self.batch_size)
+            state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
+            
+            # ตรวจสอบและแสดงข้อมูลสำหรับการดีบัก
+            print("State batch type:", type(state_batch))
+            if len(state_batch) > 0:
+                print("First state type:", type(state_batch[0]))
+                print("First state shape:", np.array(state_batch[0]).shape)
+            
+            print("Action batch type:", type(action_batch))
+            if len(action_batch) > 0:
+                print("First action:", action_batch[0])
+                print("Action batch values:", action_batch[:5])  # แสดง 5 ค่าแรก
+            
+            # แปลงข้อมูลเป็น numpy array อย่างชัดเจน
             state_batch_np = np.array(state_batch, dtype=np.float32)
             action_batch_np = np.array(action_batch, dtype=np.int64)
             reward_batch_np = np.array(reward_batch, dtype=np.float32)
@@ -152,24 +152,42 @@ class DoubleDQN(DQN):
                 action_batch = action_batch.unsqueeze(1)
                 print("Reshaped action tensor:", action_batch.shape)
             
-            # คำนวณ Q-values ปัจจุบัน
+            # คำนวณ Q-values
             q_values = self.policy_net(state_batch)
             print("Q-values shape:", q_values.shape)
             
+            # แปลงรูปร่างของ q_values ถ้าจำเป็น - จุดสำคัญที่ต้องแก้ไข
+            # ถ้า q_values มี 3 มิติ (batch, sequence, action) ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
+            if len(q_values.shape) == 3:
+                # เลือกเฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                q_values = q_values[:, -1, :]
+                print("Reshaped Q-values shape:", q_values.shape)
+            
+            # คำนวณ Q-values ปัจจุบัน
             current_q_values = q_values.gather(1, action_batch)
-            print("Current Q-values shape:", current_q_values.shape)
             
             # คำนวณ Q-values เป้าหมายด้วย Double DQN
             with torch.no_grad():
                 # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
                 next_q_values = self.policy_net(next_state_batch)
+                
+                # ถ้า next_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                if len(next_q_values.shape) == 3:
+                    next_q_values = next_q_values[:, -1, :]
+                
                 next_action_batch = next_q_values.argmax(dim=1, keepdim=True)
                 
                 # ใช้ target network เพื่อประเมินค่า Q ของการกระทำที่เลือก
-                next_q_values = self.target_net(next_state_batch).gather(1, next_action_batch)
+                target_q_values = self.target_net(next_state_batch)
+                
+                # ถ้า target_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                if len(target_q_values.shape) == 3:
+                    target_q_values = target_q_values[:, -1, :]
+                
+                target_q_values = target_q_values.gather(1, next_action_batch)
                 
                 # คำนวณค่า Q เป้าหมาย
-                target_q_values = reward_batch + (1 - done_batch) * self.gamma * next_q_values
+                target_q_values = reward_batch + (1 - done_batch) * self.gamma * target_q_values
             
             # คำนวณความสูญเสีย
             loss = F.smooth_l1_loss(current_q_values, target_q_values)
@@ -195,8 +213,10 @@ class DoubleDQN(DQN):
             self.train_count += 1
             
             return loss.item()
+        
         except Exception as e:
             print(f"เกิดข้อผิดพลาดในการอัพเดต: {e}")
+            import traceback
             traceback.print_exc()  # พิมพ์ stack trace เพื่อดีบัก
             return 0.0
     
