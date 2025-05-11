@@ -53,125 +53,36 @@ def setup_evaluate_parser(parser):
     parser.add_argument("--use-gpu", action="store_true", default=None, help="ใช้ GPU ในการประเมิน")
     parser.add_argument("--no-gpu", dest="use_gpu", action="store_false", help="ไม่ใช้ GPU ในการประเมิน")
 
-def handle_model(args):
-    """
-    จัดการคำสั่งเทรนโมเดล
-    """
-    # โหลดการตั้งค่า
-    config = get_config()
-    
-    # ถ้ามีไฟล์การตั้งค่าเฉพาะ ให้โหลดเพิ่มเติม
-    if args.config and os.path.exists(args.config):
-        config.load_config(args.config)
-    
-    # ปรับการตั้งค่าตามอาร์กิวเมนต์
-    model_config = config.extract_subconfig("model")
-    training_config = config.extract_subconfig("training")
-    
-    if args.model_type:
-        model_config["model_type"] = args.model_type
-    
-    if args.window_size:
-        config.set("data.window_size", args.window_size)
-    
-    if args.batch_size:
-        model_config["batch_size"] = args.batch_size
-    
-    if args.learning_rate:
-        model_config["learning_rate"] = args.learning_rate
-    
-    if args.discount_factor:
-        model_config["discount_factor"] = args.discount_factor
-    
-    if args.target_update:
-        model_config["target_update_frequency"] = args.target_update
-    
-    if args.epochs:
-        training_config["total_timesteps"] = args.epochs
-    
-    if args.use_gpu is not None:
-        config.set("cuda.use_cuda", args.use_gpu)
-    
-    if args.tensorboard:
-        training_config["use_tensorboard"] = True
-    
-    if args.seed:
-        config.set("general.random_seed", args.seed)
-    
-    # ตรวจสอบไฟล์นำเข้า
-    if not os.path.exists(args.input):
-        logger.error(f"ไม่พบไฟล์: {args.input}")
-        return
-    
-    # สร้างโฟลเดอร์สำหรับบันทึกโมเดล
-    os.makedirs(args.output, exist_ok=True)
-    
-    # โหลดข้อมูล
+def prepare_training_data(input_path, config, validation_ratio, test_ratio):
+    """โหลดและเตรียมข้อมูลสำหรับการเทรน"""
     data_manager = MarketDataManager(
-        file_path=args.input,
+        file_path=input_path,
         window_size=config.get("data.window_size"),
-        batch_size=model_config.get("batch_size")
+        batch_size=config.get("model.batch_size")
     )
     
     if not data_manager.data_loaded:
-        logger.error(f"ไม่สามารถโหลดข้อมูลจาก {args.input} ได้")
-        return
+        logger.error(f"ไม่สามารถโหลดข้อมูลจาก {input_path} ได้")
+        return None
     
     # แบ่งข้อมูลสำหรับการเทรน
     training_data = data_manager.create_training_data(
-        validation_ratio=args.validation_ratio,
-        test_ratio=args.test_ratio
+        validation_ratio=validation_ratio,
+        test_ratio=test_ratio
     )
     
-    # สร้างโมเดล
-    # แสดงข้อมูลสำคัญเพื่อการดีบัก
     logger.info(f"ข้อมูลมีคอลัมน์: {data_manager.data.columns.tolist()}")
     logger.info(f"รูปร่างของข้อมูล: {data_manager.data.shape}")
     
-    # คำนวณ input_size ที่ถูกต้อง - แก้ไขการใช้ pd.isna
-    try:
-        import pandas as pd
-        feature_columns = [col for col in data_manager.data.columns 
-                          if col != 'timestamp' and not pd.isna(col)]
-    except:
-        # ทางเลือกถ้ามีปัญหากับ pandas
-        feature_columns = [col for col in data_manager.data.columns 
-                          if col != 'timestamp' and col is not None]
-    
-    input_size = len(feature_columns)
-    logger.info(f"จำนวนคุณลักษณะที่จะใช้: {input_size}")
-    
-    # กำหนดค่า action_dim สำหรับโมเดล DQN (แก้ปัญหา action_dim ไม่ถูกต้อง)
-    action_dim = 4  # กำหนดเป็น 4 ตาม Trading_env.ACTIONS ที่มี NONE=0, LONG=1, SHORT=2, EXIT=3
-    
-    # สร้างโมเดล
-    model = ModelFactory.create_model(
-        model_type=model_config.get("model_type"),
-        input_size=input_size,  # ใช้ input_size ที่คำนวณแล้ว
-        config=config
-    )
-    
-    # ตั้งค่าทิศทางการบันทึก
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_name = f"{model_config.get('model_type')}_{timestamp}"
-    model_dir = os.path.join(args.output, model_name)
-    os.makedirs(model_dir, exist_ok=True)
-    
-    # บันทึกการตั้งค่า
-    config_path = os.path.join(model_dir, "config.json")
-    with open(config_path, 'w') as f:
-        json.dump(config.to_dict(), f, indent=2)
-    
-    # บันทึกสถิติข้อมูล
-    stats_path = os.path.join(model_dir, "data_stats.json")
-    data_manager.save_stats(stats_path)
-    
-    # เทรนโมเดล
+    return data_manager, training_data
+
+def train_and_save_model(model, training_data, config, model_dir):
+    """เทรนและบันทึกโมเดล"""
     history = model.train(
         train_loader=training_data["train_loader"],
         val_loader=training_data["val_loader"],
-        epochs=training_config.get("total_timesteps"),
-        log_dir=model_dir if training_config.get("use_tensorboard", False) else None
+        epochs=config.get("training.total_timesteps"),
+        log_dir=model_dir if config.get("training.use_tensorboard", False) else None
     )
     
     # บันทึกประวัติการเทรน
@@ -184,6 +95,72 @@ def handle_model(args):
     model.save(model_path)
     
     logger.info(f"บันทึกโมเดลที่: {model_path}")
+    
+    return history
+
+def handle_model(args):
+    """จัดการคำสั่งเทรนโมเดล"""
+    # โหลดการตั้งค่า
+    config = get_config()
+    
+    # ถ้ามีไฟล์การตั้งค่าเฉพาะ ให้โหลดเพิ่มเติม
+    if args.config and os.path.exists(args.config):
+        config.load_config(args.config)
+    
+    # อัพเดตการตั้งค่าจากอาร์กิวเมนต์โดยใช้ฟังก์ชันช่วยเหลือ
+    param_mapping = {
+        'model_type': 'model.model_type',
+        'window_size': 'data.window_size',
+        'batch_size': 'model.batch_size',
+        'learning_rate': 'model.learning_rate',
+        'discount_factor': 'model.discount_factor',
+        'target_update': 'model.target_update_frequency',
+        'epochs': 'training.total_timesteps',
+        'use_gpu': 'cuda.use_cuda',
+        'tensorboard': 'training.use_tensorboard',
+        'seed': 'general.random_seed'
+    }
+    
+    update_config_from_args(config, args, param_mapping)
+    
+    # ตรวจสอบไฟล์นำเข้าและสร้างโฟลเดอร์เอาต์พุต
+    if not os.path.exists(args.input):
+        logger.error(f"ไม่พบไฟล์: {args.input}")
+        return
+    
+    os.makedirs(args.output, exist_ok=True)
+    
+    # โหลดและเตรียมข้อมูล
+    data_result = prepare_training_data(args.input, config, args.validation_ratio, args.test_ratio)
+    if data_result is None:
+        return
+    
+    data_manager, training_data = data_result
+    
+    # สร้างโมเดล
+    input_size = training_data["feature_size"]
+    model = ModelFactory.create_model(
+        model_type=config.get("model.model_type"),
+        input_size=input_size,
+        config=config
+    )
+    
+    # ตั้งค่าทิศทางการบันทึก
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_name = f"{config.get('model.model_type')}_{timestamp}"
+    model_dir = os.path.join(args.output, model_name)
+    os.makedirs(model_dir, exist_ok=True)
+    
+    # เทรนและบันทึกโมเดล
+    history = train_and_save_model(model, training_data, config, model_dir)
+    
+    # บันทึกการตั้งค่าและสถิติข้อมูล
+    config_path = os.path.join(model_dir, "config.json")
+    with open(config_path, 'w') as f:
+        json.dump(config.to_dict(), f, indent=2)
+    
+    stats_path = os.path.join(model_dir, "data_stats.json")
+    data_manager.save_stats(stats_path)
     
     # ประเมินโมเดลกับชุดข้อมูล test ถ้ามี
     if "test_loader" in training_data:

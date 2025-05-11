@@ -7,19 +7,7 @@ from typing import Dict, Any, Optional, List, Union
 logger = logging.getLogger('utils.config')
 
 class ConfigManager:
-    """
-    จัดการการตั้งค่าของระบบ
-    
-    รองรับการโหลดจากไฟล์ YAML, JSON และการอัพเดตค่าต่างๆ ในระหว่างการทำงาน
-    """
-    
     def __init__(self, config_path: Optional[str] = None):
-        """
-        กำหนดค่าเริ่มต้นสำหรับ ConfigManager
-        
-        Parameters:
-        config_path (str, optional): พาธไปยังไฟล์การตั้งค่า
-        """
         # ค่าการตั้งค่าเริ่มต้น
         self.config = {}
         
@@ -52,15 +40,6 @@ class ConfigManager:
             logger.error(f"เกิดข้อผิดพลาดในการโหลดการตั้งค่าเริ่มต้น: {e}")
     
     def load_config(self, config_path: str):
-        """
-        โหลดการตั้งค่าจากไฟล์
-        
-        Parameters:
-        config_path (str): พาธไปยังไฟล์การตั้งค่า (YAML หรือ JSON)
-        
-        Returns:
-        bool: True หากโหลดสำเร็จ, False หากไม่สำเร็จ
-        """
         if not os.path.exists(config_path):
             logger.error(f"ไม่พบไฟล์การตั้งค่า: {config_path}")
             return False
@@ -87,16 +66,6 @@ class ConfigManager:
             return False
     
     def save_config(self, config_path: str, format: str = 'yaml'):
-        """
-        บันทึกการตั้งค่าไปยังไฟล์
-        
-        Parameters:
-        config_path (str): พาธไปยังไฟล์การตั้งค่า
-        format (str): รูปแบบของไฟล์ ('yaml' หรือ 'json')
-        
-        Returns:
-        bool: True หากบันทึกสำเร็จ, False หากไม่สำเร็จ
-        """
         try:
             # สร้างโฟลเดอร์หากไม่มี
             os.makedirs(os.path.dirname(config_path), exist_ok=True)
@@ -119,16 +88,6 @@ class ConfigManager:
             return False
     
     def get(self, key: str, default: Any = None) -> Any:
-        """
-        ดึงค่าจากการตั้งค่า
-        
-        Parameters:
-        key (str): คีย์ของการตั้งค่า (รองรับการเข้าถึงแบบ 'section.subsection.key')
-        default (Any): ค่าเริ่มต้นหากไม่พบคีย์
-        
-        Returns:
-        Any: ค่าของการตั้งค่า หรือค่าเริ่มต้นหากไม่พบคีย์
-        """
         if not key:
             return default
         
@@ -147,17 +106,10 @@ class ConfigManager:
         
         return current
     
+    def set_cuda_env():
+        os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+    
     def set(self, key: str, value: Any) -> bool:
-        """
-        ตั้งค่าในการตั้งค่า
-        
-        Parameters:
-        key (str): คีย์ของการตั้งค่า (รองรับการเข้าถึงแบบ 'section.subsection.key')
-        value (Any): ค่าที่ต้องการตั้ง
-        
-        Returns:
-        bool: True หากตั้งค่าสำเร็จ, False หากไม่สำเร็จ
-        """
         if not key:
             return False
         
@@ -185,23 +137,23 @@ class ConfigManager:
         return True
     
     def update_from_dict(self, data: Dict[str, Any]):
-        """
-        อัพเดตการตั้งค่าจาก dict
-        
-        Parameters:
-        data (Dict[str, Any]): ข้อมูลการตั้งค่าใหม่
-        """
         # อัพเดตการตั้งค่าแบบลึก (deep update)
         self._deep_update(self.config, data)
     
-    def _deep_update(self, target: Dict[str, Any], source: Dict[str, Any]):
-        """
-        อัพเดต dict แบบลึก (deep update)
+    def update_config_from_args(config, args, mapping):
+        for arg_name, config_path in mapping.items():
+            if hasattr(args, arg_name) and getattr(args, arg_name) is not None:
+                value = getattr(args, arg_name)
+                
+                # ตรวจสอบกรณีพิเศษ
+                if arg_name in ['stop_loss', 'take_profit'] and value is not None:
+                    value = value / 100.0 
+                    
+                config.set(config_path, value)
         
-        Parameters:
-        target (Dict[str, Any]): dict เป้าหมาย
-        source (Dict[str, Any]): dict ต้นฉบับ
-        """
+        return config
+    
+    def _deep_update(self, target: Dict[str, Any], source: Dict[str, Any]):
         for key, value in source.items():
             if isinstance(value, dict) and key in target and isinstance(target[key], dict):
                 # ถ้าทั้งคู่เป็น dict ให้อัพเดตแบบลึก
@@ -211,55 +163,22 @@ class ConfigManager:
                 target[key] = value
     
     def extract_subconfig(self, section: str) -> Dict[str, Any]:
-        """
-        ดึงการตั้งค่าย่อยจากส่วนที่ระบุ
-        
-        Parameters:
-        section (str): ส่วนของการตั้งค่าที่ต้องการดึง
-        
-        Returns:
-        Dict[str, Any]: การตั้งค่าย่อย
-        """
         return self.config.get(section, {})
     
     def to_dict(self) -> Dict[str, Any]:
-        """
-        แปลงการตั้งค่าเป็น dict
-        
-        Returns:
-        Dict[str, Any]: การตั้งค่าในรูปแบบ dict
-        """
         return self.config
     
     def reset(self):
-        """
-        รีเซ็ตการตั้งค่าเป็นค่าเริ่มต้น
-        """
         self.config = {}
         self._load_default_config()
     
     def sections(self) -> List[str]:
-        """
-        ดึงรายการส่วนของการตั้งค่า
-        
-        Returns:
-        List[str]: รายการส่วนของการตั้งค่า
-        """
         return list(self.config.keys())
 
 # Singleton instance
 _config_instance = None
 
 def get_config(config_path: Optional[str] = None) -> ConfigManager:
-    """
-    ดึง singleton instance ของ ConfigManager
-    
-    Parameters:
-    config_path (str, optional): พาธไปยังไฟล์การตั้งค่า
-    
-    Returns:
-    ConfigManager: instance ของ ConfigManager
-    """
     global _config_instance
     
     if _config_instance is None:

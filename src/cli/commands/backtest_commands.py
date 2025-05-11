@@ -49,44 +49,79 @@ def setup_analyze_parser(parser):
     parser.add_argument("--period", choices=["daily", "weekly", "monthly"], 
                       default="daily", help="ช่วงเวลาสำหรับการวิเคราะห์")
 
-def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, periods_per_year=252):
-    """
-    คำนวณเมตริกสำหรับการประเมินผลการเทรด
-    
-    Parameters:
-    trades_df (pd.DataFrame): DataFrame ของข้อมูลการเทรด
-    raw_data (pd.DataFrame, optional): DataFrame ของข้อมูลราคา (ถ้ามี)
-    risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
-    periods_per_year (int): จำนวนช่วงเวลาต่อปี
-    
-    Returns:
-    Dict[str, float]: เมตริกต่างๆ ที่คำนวณได้
-    """
-    # ตรวจสอบข้อมูล
-    if trades_df.empty:
-        logger.warning("ไม่มีข้อมูลการเทรดสำหรับการคำนวณเมตริก")
-        return {}
-    
-    # สร้าง Performance Tracker
-    initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
+def calculate_basic_metrics(trades_df, initial_equity, periods_per_year=252):
+    """คำนวณเมตริกพื้นฐาน"""
     tracker = PerformanceTracker(initial_equity=initial_equity, periods_per_year=periods_per_year)
     
     # เพิ่มข้อมูลทีละช่วงเวลา
     for i in range(1, len(trades_df)):
-        # ดึงข้อมูลที่จำเป็น
         equity = trades_df['portfolio_value'].iloc[i]
         position = trades_df['position'].iloc[i] if 'position' in trades_df.columns else 0
         timestamp = None
         if 'timestamp' in trades_df.columns:
             timestamp = pd.to_datetime(trades_df['timestamp'].iloc[i])
         
-        # อัพเดตแทรกเกอร์
         tracker.update(equity=equity, timestamp=timestamp, position=position)
     
-    # คำนวณเมตริก
-    metrics = tracker.calculate_metrics(risk_free_rate=risk_free_rate)
+    return tracker.calculate_metrics(risk_free_rate=0.0)
+
+def calculate_trade_analysis_metrics(trades_df):
+    """วิเคราะห์การเทรดและคำนวณเมตริกที่เกี่ยวข้อง"""
+    metrics = {}
     
-    # เพิ่มข้อมูลเกี่ยวกับช่วงเวลาทดสอบ
+    if 'action' in trades_df.columns and 'position' in trades_df.columns:
+        positions = trades_df['position'].values
+        
+        # นับการเปลี่ยนแปลงตำแหน่ง
+        position_changes = []
+        for i in range(1, len(positions)):
+            if positions[i] != positions[i-1]:
+                position_changes.append(i)
+        
+        # วิเคราะห์การเทรด
+        trade_count = 0
+        winning_trades = 0
+        losing_trades = 0
+        
+        for i in range(0, len(position_changes) - 1, 2):
+            if i + 1 < len(position_changes):
+                trade_count += 1
+                
+                start_idx = position_changes[i]
+                end_idx = position_changes[i + 1]
+                
+                start_value = trades_df['portfolio_value'].iloc[start_idx]
+                end_value = trades_df['portfolio_value'].iloc[end_idx]
+                
+                trade_return = (end_value / start_value) - 1
+                
+                if trade_return > 0:
+                    winning_trades += 1
+                else:
+                    losing_trades += 1
+        
+        metrics['total_trades'] = trade_count
+        metrics['winning_trades'] = winning_trades
+        metrics['losing_trades'] = losing_trades
+        
+        if trade_count > 0:
+            metrics['win_rate'] = (winning_trades / trade_count) * 100
+    
+    return metrics
+
+def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, periods_per_year=252):
+    """
+    คำนวณเมตริกสำหรับการประเมินผลการเทรด
+    """
+    if trades_df.empty:
+        logger.warning("ไม่มีข้อมูลการเทรดสำหรับการคำนวณเมตริก")
+        return {}
+    
+    # คำนวณเมตริกพื้นฐาน
+    initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
+    metrics = calculate_basic_metrics(trades_df, initial_equity, periods_per_year)
+    
+    # เพิ่มเมตริกเกี่ยวกับช่วงเวลา
     if raw_data is not None and 'timestamp' in trades_df.columns:
         # คำนวณจำนวนวันทดสอบ
         first_date = pd.to_datetime(trades_df['timestamp'].iloc[0]).date()
@@ -106,50 +141,13 @@ def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, peri
                 if len(raw_data_in_range) > 1:
                     first_price = raw_data_in_range['close'].iloc[0]
                     last_price = raw_data_in_range['close'].iloc[-1]
-                    metrics['buy_hold_return'] = ((last_price / first_price) - 1) * 100  # เป็นเปอร์เซ็นต์
+                    metrics['buy_hold_return'] = ((last_price / first_price) - 1) * 100
             except Exception as e:
                 logger.warning(f"ไม่สามารถคำนวณผลตอบแทนของ Buy & Hold: {e}")
     
     # วิเคราะห์การเทรด
-    if 'action' in trades_df.columns and 'position' in trades_df.columns:
-        actions = trades_df['action'].values
-        positions = trades_df['position'].values
-        
-        # นับจำนวนการเทรด
-        trade_count = 0
-        winning_trades = 0
-        losing_trades = 0
-        
-        position_changes = []
-        for i in range(1, len(positions)):
-            if positions[i] != positions[i-1]:
-                position_changes.append(i)
-        
-        # ถ้ามีการเปลี่ยนตำแหน่งอย่างน้อย 2 ครั้ง จะนับเป็น 1 เทรด
-        for i in range(0, len(position_changes) - 1, 2):
-            if i + 1 < len(position_changes):
-                trade_count += 1
-                
-                start_idx = position_changes[i]
-                end_idx = position_changes[i + 1]
-                
-                # คำนวณผลตอบแทนจากการเทรด
-                start_value = trades_df['portfolio_value'].iloc[start_idx]
-                end_value = trades_df['portfolio_value'].iloc[end_idx]
-                
-                trade_return = (end_value / start_value) - 1
-                
-                if trade_return > 0:
-                    winning_trades += 1
-                else:
-                    losing_trades += 1
-        
-        metrics['total_trades'] = trade_count
-        metrics['winning_trades'] = winning_trades
-        metrics['losing_trades'] = losing_trades
-        
-        if trade_count > 0:
-            metrics['win_rate'] = (winning_trades / trade_count) * 100
+    trade_metrics = calculate_trade_analysis_metrics(trades_df)
+    metrics.update(trade_metrics)
     
     return metrics
 
