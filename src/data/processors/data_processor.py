@@ -1,7 +1,3 @@
-"""
-โมดูลสำหรับการประมวลผลข้อมูลของ CRYPPO (Cryptocurrency Position Optimization)
-"""
-
 import os
 import numpy as np
 import pandas as pd
@@ -26,19 +22,8 @@ from src.data.transforms.data_cleaning import (
 # ตั้งค่า logger
 logger = logging.getLogger(__name__)
 
-class DataProcessor:
-    """
-    ประมวลผลข้อมูลสำหรับ Reinforcement Learning
-    
-    คลาสนี้ใช้สำหรับประมวลผลข้อมูลตลาดดิบให้เป็นรูปแบบที่เหมาะสมสำหรับการฝึกโมเดล RL
-    รองรับการทำ Log Transform, Z-score Normalization, การจัดการค่าที่หายไป และการสร้างคุณลักษณะ (feature engineering)
-    """
-    
+class DataProcessor:    
     def __init__(self, config=None):
-        """
-        กำหนดค่าเริ่มต้นสำหรับ DataProcessor
-        """
-        # โหลดการตั้งค่า
         self.config = config if config is not None else get_config()
         
         # ดึงการตั้งค่าที่เกี่ยวข้อง
@@ -76,18 +61,6 @@ class DataProcessor:
         file_pattern: str = "*.csv",
         additional_indicators: Optional[List[str]] = None
     ) -> List[str]:
-        """
-        ประมวลผลไฟล์ทั้งหมดในไดเรกทอรี
-        
-        Parameters:
-        input_dir (str): ไดเรกทอรีที่มีไฟล์ข้อมูลนำเข้า
-        output_dir (str): ไดเรกทอรีสำหรับไฟล์ผลลัพธ์
-        file_pattern (str): รูปแบบไฟล์ที่ต้องการประมวลผล (เช่น "*.csv", "*.parquet")
-        additional_indicators (List[str], optional): รายการตัวชี้วัดเพิ่มเติมที่ต้องการคำนวณ
-        
-        Returns:
-        List[str]: รายการไฟล์ที่ประมวลผลแล้ว
-        """
         import glob
         import os
         from pathlib import Path
@@ -135,9 +108,6 @@ class DataProcessor:
         output_file: Optional[str] = None,
         additional_indicators: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """
-        ประมวลผลไฟล์ข้อมูลตลาดแบบครบวงจร
-        """
         logger.info(f"กำลังประมวลผลไฟล์: {input_file}")
         
         # โหลดข้อมูล
@@ -181,9 +151,6 @@ class DataProcessor:
         return processed_df
     
     def load_data(self, file_path: str) -> pd.DataFrame:
-        """
-        โหลดข้อมูลจากไฟล์
-        """
         try:
             # ตรวจสอบว่าไฟล์มีอยู่หรือไม่
             if not os.path.exists(file_path):
@@ -312,9 +279,6 @@ class DataProcessor:
         return processed_df
     
     def inverse_transform(self, data: np.ndarray, stat_type: str = "ohlcv") -> np.ndarray:
-        """
-        แปลงข้อมูลกลับเป็นค่าดิบ
-        """
         if stat_type not in self.stats:
             logger.error(f"ไม่พบสถิติประเภท: {stat_type}")
             return data
@@ -337,9 +301,6 @@ class DataProcessor:
         return data
     
     def inverse_transform_price(self, price: float, column: str = "close") -> float:
-        """
-        แปลงราคาเดี่ยวกลับเป็นค่าดิบ
-        """
         if "ohlcv" not in self.stats:
             logger.error("ไม่พบสถิติ OHLCV")
             return price
@@ -377,9 +338,6 @@ class DataProcessor:
         return value
     
     def save_processed_data(self, df: pd.DataFrame, output_file: str) -> None:
-        """
-        บันทึกข้อมูลที่ผ่านการประมวลผลแล้ว
-        """
         try:
             # สร้างโฟลเดอร์หากไม่มี
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -399,9 +357,6 @@ class DataProcessor:
             logger.error(f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}")
     
     def save_stats(self, output_file: str) -> None:
-        """
-        บันทึกสถิติสำหรับการแปลงกลับ
-        """
         try:
             # สร้างโฟลเดอร์หากไม่มี
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -416,9 +371,6 @@ class DataProcessor:
             logger.error(f"เกิดข้อผิดพลาดในการบันทึกสถิติ: {e}")
     
     def load_stats(self, input_file: str) -> None:
-        """
-        โหลดสถิติสำหรับการแปลงกลับ
-        """
         try:
             # ตรวจสอบว่าไฟล์มีอยู่หรือไม่
             if not os.path.exists(input_file):
@@ -443,9 +395,6 @@ class DataProcessor:
         test_ratio: float = 0.1,
         shuffle: bool = True
     ) -> Dict[str, Any]:
-        """
-        สร้างชุดข้อมูลสำหรับการเทรนโมเดล
-        """
         # ใช้ค่าเริ่มต้นจากการตั้งค่าถ้าไม่ได้ระบุ
         if window_size is None:
             window_size = self.window_size
