@@ -253,9 +253,11 @@ def handle_run(args):
     
     # โหลดโมเดล
     model_type = config.get("model.model_type")
+    input_size = 25  # หรือค่าที่ถูกต้องตามโมเดลของคุณ
+
     model = ModelFactory.create_model(
         model_type=model_type,
-        input_size=env.observation_space.shape[1],
+        input_size=input_size,
         config=config
     )
     
