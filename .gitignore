@@ -69,6 +69,7 @@ venv.bak/
 *.sublime-project
 
 models/
+results/
 
 # OS
 .DS_Store
