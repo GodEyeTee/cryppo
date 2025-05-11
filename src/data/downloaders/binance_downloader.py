@@ -1,7 +1,3 @@
-"""
-โมดูลสำหรับการดาวน์โหลดข้อมูลจาก Binance
-"""
-
 import os
 import pandas as pd
 import numpy as np
@@ -21,27 +17,7 @@ from src.data.utils.time_utils import get_timeframe_delta
 logger = logging.getLogger(__name__)
 
 class BinanceDownloader(BaseDownloader):
-    """
-    ดาวน์โหลดข้อมูลประวัติราคาจาก Binance API
-    
-    คุณสมบัติ:
-    - ดาวน์โหลดข้อมูล OHLCV (Open, High, Low, Close, Volume)
-    - รองรับหลายไทม์เฟรม (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M)
-    - จัดการการจำกัด rate limit ของ Binance โดยอัตโนมัติ
-    - บันทึกข้อมูลในรูปแบบ CSV และ/หรือ Parquet
-    """
-    
     def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
-        """
-        กำหนดค่าเริ่มต้นสำหรับ Binance Downloader
-        
-        Parameters:
-        api_key (str, optional): Binance API key
-        api_secret (str, optional): Binance API secret
-        
-        หมายเหตุ: API key และ API secret ไม่จำเป็นสำหรับการดึงข้อมูลประวัติราคา
-        แต่อาจจำเป็นสำหรับฟีเจอร์อื่นๆ ในอนาคต และช่วยเพิ่ม rate limits
-        """
         super().__init__()
         self.api = BinanceAPI(api_key, api_secret)
     
@@ -55,21 +31,6 @@ class BinanceDownloader(BaseDownloader):
         file_format: str = "both",
         include_current_candle: bool = False
     ) -> pd.DataFrame:
-        """
-        ดาวน์โหลดข้อมูลประวัติราคาย้อนหลังจาก Binance
-        
-        Parameters:
-        symbol (str): คู่สกุลเงิน (เช่น "BTCUSDT")
-        timeframe (str): ไทม์เฟรม (เช่น "1m", "5m", "1h")
-        start_date (str or datetime): วันเริ่มต้น (YYYY-MM-DD หรือ datetime)
-        end_date (str or datetime, optional): วันสิ้นสุด (YYYY-MM-DD หรือ datetime, ค่าเริ่มต้น = วันปัจจุบัน)
-        output_dir (str): ไดเรกทอรีที่จะบันทึกข้อมูล
-        file_format (str): รูปแบบไฟล์ที่จะบันทึก ("csv", "parquet", หรือ "both")
-        include_current_candle (bool): รวมแท่งเทียนปัจจุบันที่ยังไม่ปิดหรือไม่
-        
-        Returns:
-        pd.DataFrame: ข้อมูลประวัติราคาที่ดาวน์โหลด
-        """
         # ตรวจสอบและแปลงพารามิเตอร์
         symbol = symbol.upper()
         timeframe = self.api.validate_timeframe(timeframe)
@@ -182,18 +143,6 @@ class BinanceDownloader(BaseDownloader):
         data_dir: str = "data/raw",
         file_format: str = "both"
     ) -> Optional[pd.DataFrame]:
-        """
-        อัพเดตข้อมูลให้เป็นปัจจุบัน
-        
-        Parameters:
-        symbol (str): คู่สกุลเงิน (เช่น "BTCUSDT")
-        timeframe (str): ไทม์เฟรม (เช่น "1m", "5m", "1h")
-        data_dir (str): ไดเรกทอรีที่เก็บข้อมูล
-        file_format (str): รูปแบบไฟล์ที่จะบันทึก ("csv", "parquet", หรือ "both")
-        
-        Returns:
-        pd.DataFrame หรือ None: ข้อมูลที่อัพเดตแล้ว หรือ None หากไม่มีไฟล์เดิม
-        """
         symbol = symbol.upper()
         timeframe = self.api.validate_timeframe(timeframe)
         
@@ -275,18 +224,6 @@ class BinanceDownloader(BaseDownloader):
         fill_missing: bool = True,
         remove_duplicates: bool = True
     ) -> pd.DataFrame:
-        """
-        ตรวจสอบและแก้ไขข้อมูลให้สมบูรณ์
-        
-        Parameters:
-        df (pd.DataFrame): DataFrame ที่ต้องการตรวจสอบ
-        timeframe (str): ไทม์เฟรมของข้อมูล
-        fill_missing (bool): เติมข้อมูลที่หายไปหรือไม่
-        remove_duplicates (bool): ลบข้อมูลที่ซ้ำกันหรือไม่
-        
-        Returns:
-        pd.DataFrame: DataFrame ที่ผ่านการตรวจสอบแล้ว
-        """
         if df.empty:
             logger.warning("DataFrame ว่างเปล่า")
             return df
@@ -388,20 +325,6 @@ class BinanceDownloader(BaseDownloader):
         output_dir: str = "data/raw",
         file_format: str = "both"
     ) -> Dict[str, pd.DataFrame]:
-        """
-        ดาวน์โหลดข้อมูลหลายไทม์เฟรมพร้อมกัน
-        
-        Parameters:
-        symbol (str): คู่สกุลเงิน (เช่น "BTCUSDT")
-        timeframes (list): รายการไทม์เฟรม (เช่น ["1m", "5m", "1h"])
-        start_date (str or datetime): วันเริ่มต้น (YYYY-MM-DD หรือ datetime)
-        end_date (str or datetime, optional): วันสิ้นสุด (YYYY-MM-DD หรือ datetime, ค่าเริ่มต้น = วันปัจจุบัน)
-        output_dir (str): ไดเรกทอรีที่จะบันทึกข้อมูล
-        file_format (str): รูปแบบไฟล์ที่จะบันทึก ("csv", "parquet", หรือ "both")
-        
-        Returns:
-        dict: Dictionary ที่มีไทม์เฟรมเป็นคีย์และ DataFrame เป็นค่า
-        """
         results = {}
         
         for timeframe in timeframes:
@@ -425,18 +348,6 @@ class BinanceDownloader(BaseDownloader):
         data_dir: str = "data/raw",
         file_format: str = "both"
     ) -> Dict[str, Optional[pd.DataFrame]]:
-        """
-        อัพเดตข้อมูลหลายไทม์เฟรมพร้อมกัน
-        
-        Parameters:
-        symbol (str): คู่สกุลเงิน (เช่น "BTCUSDT")
-        timeframes (list): รายการไทม์เฟรม (เช่น ["1m", "5m", "1h"])
-        data_dir (str): ไดเรกทอรีที่เก็บข้อมูล
-        file_format (str): รูปแบบไฟล์ที่จะบันทึก ("csv", "parquet", หรือ "both")
-        
-        Returns:
-        dict: Dictionary ที่มีไทม์เฟรมเป็นคีย์และ DataFrame เป็นค่า
-        """
         results = {}
         
         for timeframe in timeframes:
@@ -457,20 +368,6 @@ class BinanceDownloader(BaseDownloader):
         source_timeframe: str,
         target_timeframe: str
     ) -> pd.DataFrame:
-        """
-        แปลงข้อมูลจากไทม์เฟรมหนึ่งไปยังอีกไทม์เฟรมหนึ่ง
-        
-        Parameters:
-        df (pd.DataFrame): DataFrame ที่ต้องการแปลง
-        source_timeframe (str): ไทม์เฟรมต้นฉบับ
-        target_timeframe (str): ไทม์เฟรมเป้าหมาย
-        
-        Returns:
-        pd.DataFrame: DataFrame ที่ผ่านการแปลงแล้ว
-        
-        Raises:
-        ValueError: หากไม่สามารถแปลงไทม์เฟรมได้
-        """
         if df.empty:
             logger.warning("DataFrame ว่างเปล่า")
             return df
