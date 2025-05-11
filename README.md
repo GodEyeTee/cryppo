@@ -181,9 +181,7 @@ python -m src.cli.main train model --input data/processed/BTCUSDT/1m/btcusdt_1m_
 ### Backtest:
 
 ```bash
-python scripts/backtest.py \
-  --model outputs/models/double_dqn_5m \
-  --config configs/backtest_config.json
+python -m src.cli.main backtest run --model models/btcusdt/double_dqn_TIMESTAMP/model.pt --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet --output results/backtest --initial-balance 10000 --leverage 3.0 --fee-rate 0.0025 --stop-loss 5.0 --take-profit 0.5 --plot
 ```
 
 ---
