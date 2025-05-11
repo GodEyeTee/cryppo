@@ -1,7 +1,3 @@
-"""
-โมดูลสำหรับการจัดการข้อมูลในหน่วยความจำของ CRYPPO (Cryptocurrency Position Optimization)
-"""
-
 import os
 import numpy as np
 import pandas as pd
@@ -22,13 +18,6 @@ from src.data.utils.file_utils import ensure_directory_exists, load_dataframe, f
 logger = logging.getLogger(__name__)
 
 class MarketDataManager:
-    """
-    จัดการข้อมูลตลาดสำหรับระบบจำลองการเทรด
-    
-    คลาสนี้รับผิดชอบการโหลด จัดการ และเตรียมข้อมูลสำหรับสภาพแวดล้อมจำลองการเทรด
-    รวมถึงการจัดการข้อมูลไทม์เฟรมต่างๆ และการเชื่อมโยงข้อมูลรายละเอียด (เช่น 1m) กับข้อมูลหลัก (เช่น 5m)
-    """
-    
     def __init__(
         self,
         file_path: Optional[str] = None,
@@ -43,9 +32,6 @@ class MarketDataManager:
         use_gpu: Optional[bool] = None,
         config = None
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับ MarketDataManager
-        """
         # โหลดการตั้งค่า
         self.config = config if config is not None else get_config()
         
@@ -208,12 +194,6 @@ class MarketDataManager:
             logger.error(f"เกิดข้อผิดพลาดในการประมวลผลข้อมูล: {e}")
     
     def load_detail_data(self) -> bool:
-        """
-        โหลดข้อมูลรายละเอียด (เช่น 1m) ที่สอดคล้องกับข้อมูลหลัก (เช่น 5m)
-        
-        Returns:
-        bool: True ถ้าโหลดสำเร็จ, False ถ้าไม่สำเร็จ
-        """
         if not self.file_path or not self.raw_data is not None:
             return False
         
@@ -283,15 +263,6 @@ class MarketDataManager:
             return None
     
     def get_batch(self, batch_idx: int) -> Dict[str, Any]:
-        """
-        ดึงชุดข้อมูล batch ที่ต้องการ
-        
-        Parameters:
-        batch_idx (int): ดัชนีของ batch
-        
-        Returns:
-        dict: ข้อมูลที่ประมวลผลแล้ว
-        """
         if not self.data_loaded or self.data is None:
             logger.error("ยังไม่ได้โหลดข้อมูล")
             return {}
@@ -375,12 +346,6 @@ class MarketDataManager:
             return {}
     
     def data_generator(self):
-        """
-        Generator สำหรับการวนซ้ำผ่านชุดข้อมูลทั้งหมด
-        
-        Yields:
-        dict: ข้อมูลสำหรับแต่ละ batch
-        """
         for batch_idx in range(self.num_batches):
             yield self.get_batch(batch_idx)
     
@@ -400,9 +365,6 @@ class MarketDataManager:
             return normalized_price
     
     def get_data_info(self) -> Dict[str, Any]:
-        """
-        ดึงข้อมูลเกี่ยวกับชุดข้อมูลที่โหลดแล้ว
-        """
         if not self.data_loaded or self.data is None:
             return {
                 'loaded': False,
@@ -458,9 +420,6 @@ class MarketDataManager:
         test_ratio: float = 0.1,
         shuffle: bool = True
     ) -> Dict[str, Any]:
-        """
-        สร้างชุดข้อมูลสำหรับการเทรนโมเดล
-        """
         if not self.data_loaded or self.data is None:
             logger.error("ยังไม่ได้โหลดข้อมูล")
             return {}
@@ -576,9 +535,6 @@ class MarketDataManager:
             return {}
     
     def save_stats(self, file_path: str) -> bool:
-        """
-        บันทึกสถิติสำหรับการแปลงกลับ
-        """
         if not self.stats:
             logger.error("ไม่มีสถิติสำหรับบันทึก")
             return False
@@ -591,9 +547,6 @@ class MarketDataManager:
             return False
     
     def load_stats(self, file_path: str) -> bool:
-        """
-        โหลดสถิติสำหรับการแปลงกลับ
-        """
         try:
             # โหลดสถิติ
             stats = load_json(file_path)
@@ -616,9 +569,6 @@ class MarketDataManager:
             return False
     
     def find_files(self, data_dir: str, symbol: str, timeframe: str, file_pattern: str = "*") -> List[str]:
-        """
-        ค้นหาไฟล์ข้อมูลในไดเรกทอรี
-        """
         try:
             import glob
             
@@ -650,9 +600,6 @@ class MarketDataManager:
         max_price: Optional[float] = None,
         conditions: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """
-        กรองข้อมูลตามเงื่อนไข
-        """
         if not self.data_loaded or self.raw_data is None:
             logger.error("ไม่มีข้อมูล")
             return False
@@ -712,15 +659,6 @@ class MarketDataManager:
             return False
     
     def get_timeseries_stats(self, column_name: str) -> Dict[str, Any]:
-        """
-        คำนวณสถิติของข้อมูล time series
-        
-        Parameters:
-        column_name (str): ชื่อคอลัมน์ที่ต้องการวิเคราะห์
-        
-        Returns:
-        Dict[str, Any]: สถิติต่างๆ ของคอลัมน์ที่ระบุ
-        """
         if not self.data_loaded or self.raw_data is None:
             logger.error("ยังไม่ได้โหลดข้อมูล")
             return {}
@@ -793,15 +731,6 @@ class MarketDataManager:
             return {}
     
     def get_correlation_matrix(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """
-        คำนวณเมทริกซ์สหสัมพันธ์ของคอลัมน์ที่ระบุ
-        
-        Parameters:
-        columns (List[str], optional): รายการคอลัมน์ที่ต้องการคำนวณสหสัมพันธ์
-        
-        Returns:
-        pd.DataFrame: เมทริกซ์สหสัมพันธ์
-        """
         if not self.data_loaded or self.raw_data is None:
             logger.error("ยังไม่ได้โหลดข้อมูล")
             return pd.DataFrame()
@@ -830,15 +759,6 @@ class MarketDataManager:
             return pd.DataFrame()
 
     def get_period_stats(self, period: str = 'daily') -> pd.DataFrame:
-        """
-        วิเคราะห์สถิติตามช่วงเวลา
-        
-        Parameters:
-        period (str): ช่วงเวลาที่ต้องการวิเคราะห์ ('daily', 'weekly', 'monthly', 'hourly')
-        
-        Returns:
-        pd.DataFrame: DataFrame ของสถิติตามช่วงเวลา
-        """
         if not self.data_loaded or self.raw_data is None:
             logger.error("ยังไม่ได้โหลดข้อมูล")
             return pd.DataFrame()
