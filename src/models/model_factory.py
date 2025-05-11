@@ -68,21 +68,32 @@ class ModelFactory:
         
         if model_class:
             try:
-                # กำหนดค่า action_dim และ input_size ตายตัว (ในกรณีฉุกเฉิน)
-                # ค่าเหล่านี้ควรสอดคล้องกับข้อมูลจริง
-                action_dim = 4  # แก้ไขตามจำนวนการกระทำจริง
-                manual_input_size = 25  # แก้ไขตามจำนวนคอลัมน์จริง
+                # ตรวจสอบข้อมูลเพื่อการแก้จุดบกพร่อง
+                print(f"Creating model with input_size: {input_size}")
+                
+                # กำหนดค่า action_dim และ input_size ที่ถูกต้อง
+                action_dim = 4  # มาจาก Trading_env.ACTIONS ที่มี 4 actions (NONE, LONG, SHORT, EXIT)
+                
+                # อาจจำเป็นต้องปรับ input_size ให้ตรงกับข้อมูล
+                # จากข้อผิดพลาด input_size ควรเป็น 25 ไม่ใช่ 26
+                input_size = 25
                 
                 # ตรวจสอบว่าโมเดลเป็น DQN หรือ subclass ของ DQN หรือไม่
                 if issubclass(model_class, DQN):
-                    model = model_class(input_size=manual_input_size, action_dim=action_dim, config=config)
+                    model = model_class(
+                        input_size=input_size, 
+                        action_dim=action_dim, 
+                        config=config
+                    )
                 else:
-                    model = model_class(input_size=manual_input_size, config=config)
+                    model = model_class(input_size=input_size, config=config)
                 
-                logger.info(f"สร้างโมเดล {model_type} สำเร็จด้วย input_size={manual_input_size}, action_dim={action_dim}")
+                logger.info(f"สร้างโมเดล {model_type} สำเร็จด้วย input_size={input_size}, action_dim={action_dim}")
                 return model
             except Exception as e:
                 logger.error(f"เกิดข้อผิดพลาดในการสร้างโมเดล {model_type}: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
         
         return None

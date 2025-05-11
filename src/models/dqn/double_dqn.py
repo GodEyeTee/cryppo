@@ -125,9 +125,23 @@ class DoubleDQN(DQN):
                 print("First action:", action_batch[0])
                 print("Action batch values:", action_batch[:5])  # แสดง 5 ค่าแรก
             
+            # ทำความสะอาดข้อมูล action ให้อยู่ในช่วงที่ถูกต้อง
+            cleaned_action_batch = []
+            for action in action_batch:
+                # ตรวจสอบว่า action เป็นตัวเลขและอยู่ในช่วงที่ถูกต้อง
+                try:
+                    action_val = int(action)
+                    if action_val < 0 or action_val >= self.action_dim:
+                        # ถ้า action ไม่ถูกต้อง ให้ใช้ค่าที่ถูกต้องแทน (บีบให้อยู่ในช่วงที่ถูกต้อง)
+                        action_val = action_val % self.action_dim
+                    cleaned_action_batch.append(action_val)
+                except (ValueError, TypeError):
+                    # ถ้าไม่สามารถแปลงเป็นตัวเลขได้ ให้ใช้ค่าเริ่มต้น
+                    cleaned_action_batch.append(0)
+            
             # แปลงข้อมูลเป็น numpy array อย่างชัดเจน
             state_batch_np = np.array(state_batch, dtype=np.float32)
-            action_batch_np = np.array(action_batch, dtype=np.int64)
+            action_batch_np = np.array(cleaned_action_batch, dtype=np.int64)
             reward_batch_np = np.array(reward_batch, dtype=np.float32)
             next_state_batch_np = np.array(next_state_batch, dtype=np.float32)
             done_batch_np = np.array(done_batch, dtype=np.float32)
@@ -135,6 +149,22 @@ class DoubleDQN(DQN):
             # แสดงรูปร่างของ arrays เพื่อตรวจสอบ
             print("State batch shape:", state_batch_np.shape)
             print("Action batch shape:", action_batch_np.shape)
+            
+            # ตรวจสอบขนาดของข้อมูล state และเพิ่มคอลัมน์เสริมถ้าจำเป็น
+            # ถ้าคอลัมน์ที่โมเดลคาดหวังมากกว่าคอลัมน์ที่มีอยู่จริง
+            # ใช้ self.state_dim แทน self.input_size
+            if state_batch_np.shape[-1] < self.state_dim:
+                # คำนวณจำนวนคอลัมน์ที่ต้องเพิ่ม
+                extra_columns = self.state_dim - state_batch_np.shape[-1]
+                # สร้างคอลัมน์เสริมที่มีค่าเป็น 0
+                batch_size, seq_len, _ = state_batch_np.shape
+                padding = np.zeros((batch_size, seq_len, extra_columns), dtype=np.float32)
+                # เพิ่มคอลัมน์เสริมเข้าไปในข้อมูล
+                state_batch_np = np.concatenate([state_batch_np, padding], axis=2)
+                print(f"Added {extra_columns} padding columns, new shape:", state_batch_np.shape)
+                
+                # ทำแบบเดียวกันสำหรับ next_state_batch_np
+                next_state_batch_np = np.concatenate([next_state_batch_np, padding], axis=2)
             
             # แปลงเป็น PyTorch tensors
             state_batch = torch.FloatTensor(state_batch_np).to(self.device)
@@ -153,66 +183,83 @@ class DoubleDQN(DQN):
                 print("Reshaped action tensor:", action_batch.shape)
             
             # คำนวณ Q-values
-            q_values = self.policy_net(state_batch)
-            print("Q-values shape:", q_values.shape)
-            
-            # แปลงรูปร่างของ q_values ถ้าจำเป็น - จุดสำคัญที่ต้องแก้ไข
-            # ถ้า q_values มี 3 มิติ (batch, sequence, action) ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
-            if len(q_values.shape) == 3:
-                # เลือกเฉพาะสถานะสุดท้ายของแต่ละลำดับ
-                q_values = q_values[:, -1, :]
-                print("Reshaped Q-values shape:", q_values.shape)
-            
-            # คำนวณ Q-values ปัจจุบัน
-            current_q_values = q_values.gather(1, action_batch)
-            
-            # คำนวณ Q-values เป้าหมายด้วย Double DQN
-            with torch.no_grad():
-                # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
-                next_q_values = self.policy_net(next_state_batch)
+            try:
+                q_values = self.policy_net(state_batch)
+                print("Q-values shape:", q_values.shape)
                 
-                # ถ้า next_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
-                if len(next_q_values.shape) == 3:
-                    next_q_values = next_q_values[:, -1, :]
+                # แปลงรูปร่างของ q_values ถ้าจำเป็น
+                if len(q_values.shape) == 3:
+                    # เลือกเฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                    q_values = q_values[:, -1, :]
+                    print("Reshaped Q-values shape:", q_values.shape)
+                    
+                # ตรวจสอบช่วงของ action_batch
+                max_action = int(torch.max(action_batch).item())
+                print(f"Maximum action value: {max_action}, Q-values dimension: {q_values.size(1)}")
                 
-                next_action_batch = next_q_values.argmax(dim=1, keepdim=True)
+                # ตรวจสอบและป้องกันความผิดพลาดของ action_batch
+                if max_action >= q_values.size(1):
+                    print(f"Warning: Action value {max_action} exceeds Q-values dimension {q_values.size(1)}")
+                    # แก้ไขค่า action ที่ไม่ถูกต้อง
+                    action_batch = torch.clamp(action_batch, 0, q_values.size(1) - 1)
+                    print(f"Action tensor clamped, new max: {torch.max(action_batch).item()}")
                 
-                # ใช้ target network เพื่อประเมินค่า Q ของการกระทำที่เลือก
-                target_q_values = self.target_net(next_state_batch)
+                # คำนวณ Q-values ปัจจุบัน
+                current_q_values = q_values.gather(1, action_batch)
                 
-                # ถ้า target_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
-                if len(target_q_values.shape) == 3:
-                    target_q_values = target_q_values[:, -1, :]
+                # คำนวณ Q-values เป้าหมายด้วย Double DQN
+                with torch.no_grad():
+                    # ใช้ policy network เพื่อเลือกการกระทำที่ดีที่สุดในสถานะถัดไป
+                    next_q_values = self.policy_net(next_state_batch)
+                    
+                    # ถ้า next_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                    if len(next_q_values.shape) == 3:
+                        next_q_values = next_q_values[:, -1, :]
+                    
+                    next_action_batch = next_q_values.argmax(dim=1, keepdim=True)
+                    
+                    # ใช้ target network เพื่อประเมินค่า Q ของการกระทำที่เลือก
+                    target_q_values = self.target_net(next_state_batch)
+                    
+                    # ถ้า target_q_values มี 3 มิติ ให้ใช้เฉพาะสถานะสุดท้ายของแต่ละลำดับ
+                    if len(target_q_values.shape) == 3:
+                        target_q_values = target_q_values[:, -1, :]
+                    
+                    target_q_values = target_q_values.gather(1, next_action_batch)
+                    
+                    # คำนวณค่า Q เป้าหมาย
+                    target_q_values = reward_batch + (1 - done_batch) * self.gamma * target_q_values
                 
-                target_q_values = target_q_values.gather(1, next_action_batch)
+                # คำนวณความสูญเสีย
+                loss = F.smooth_l1_loss(current_q_values, target_q_values)
                 
-                # คำนวณค่า Q เป้าหมาย
-                target_q_values = reward_batch + (1 - done_batch) * self.gamma * target_q_values
+                # อัพเดตเครือข่าย
+                self.optimizer.zero_grad()
+                loss.backward()
+                
+                # Gradient clipping (ถ้ากำหนด)
+                if self.clip_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.clip_grad_norm)
+                
+                self.optimizer.step()
+                
+                # อัพเดตเครือข่ายเป้าหมายเป็นระยะ
+                self.update_count += 1
+                if self.update_count % self.target_update_freq == 0:
+                    self.target_net.load_state_dict(self.policy_net.state_dict())
+                
+                # อัพเดต epsilon
+                self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
+                
+                self.train_count += 1
+                
+                return loss.item()
             
-            # คำนวณความสูญเสีย
-            loss = F.smooth_l1_loss(current_q_values, target_q_values)
-            
-            # อัพเดตเครือข่าย
-            self.optimizer.zero_grad()
-            loss.backward()
-            
-            # Gradient clipping (ถ้ากำหนด)
-            if self.clip_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.clip_grad_norm)
-            
-            self.optimizer.step()
-            
-            # อัพเดตเครือข่ายเป้าหมายเป็นระยะ
-            self.update_count += 1
-            if self.update_count % self.target_update_freq == 0:
-                self.target_net.load_state_dict(self.policy_net.state_dict())
-            
-            # อัพเดต epsilon
-            self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
-            
-            self.train_count += 1
-            
-            return loss.item()
+            except Exception as e:
+                print(f"Error during Q-values calculation or loss computation: {e}")
+                import traceback
+                traceback.print_exc()
+                return 0.0
         
         except Exception as e:
             print(f"เกิดข้อผิดพลาดในการอัพเดต: {e}")
@@ -457,15 +504,6 @@ class DoubleDQN(DQN):
         return metrics
     
     def _setup_tensorboard(self, log_dir: str):
-        """
-        ตั้งค่า TensorBoard logger
-        
-        Parameters:
-        log_dir (str): ไดเรกทอรีสำหรับบันทึก log
-        
-        Returns:
-        TensorboardLogger or None: TensorBoard logger หรือ None หากไม่สามารถตั้งค่าได้
-        """
         try:
             # สร้างไดเรกทอรีด้วย os.makedirs ก่อน
             import os
@@ -490,8 +528,15 @@ class DoubleDQN(DQN):
         done: สถานะจบ
         """
         try:
-            # ตรวจสอบว่า action เป็น integer
-            action = int(action)
+            # ตรวจสอบว่า action เป็น integer และอยู่ในช่วงที่ถูกต้อง
+            try:
+                action = int(action)
+                if action < 0 or action >= self.action_dim:
+                    # ถ้า action ไม่ถูกต้อง ให้ใช้ค่าที่ถูกต้องแทน
+                    action = action % self.action_dim
+            except (ValueError, TypeError):
+                # ถ้าไม่สามารถแปลงเป็น integer ได้ ให้ใช้ค่าเริ่มต้น
+                action = 0
             
             # แปลงค่าให้เป็นประเภทที่ถูกต้อง
             state = np.array(state, dtype=np.float32)

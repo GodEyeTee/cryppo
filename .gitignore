@@ -68,6 +68,8 @@ venv.bak/
 *.sublime-workspace
 *.sublime-project
 
+models/
+
 # OS
 .DS_Store
 .DS_Store?

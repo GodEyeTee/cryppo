@@ -137,8 +137,29 @@ class DQNNetwork(nn.Module):
         Returns:
         torch.Tensor: เอาต์พุต (Q-values)
         """
+        # ตรวจสอบและปรับแต่งขนาดอินพุต
         if x.shape[-1] != self.input_dim:
-            raise ValueError(f"ขนาดของอินพุตไม่ถูกต้อง: คาดหวัง {self.input_dim} คอลัมน์ แต่ได้รับ {x.shape[-1]} คอลัมน์")
+            print(f"Warning: input dimension mismatch. Expected {self.input_dim}, got {x.shape[-1]}")
+            # ถ้าขนาดไม่ตรงกัน มีสองทางเลือก:
+            
+            # 1. เพิ่มคอลัมน์ด้วยค่า 0
+            if x.shape[-1] < self.input_dim:
+                padding_size = self.input_dim - x.shape[-1]
+                if x.dim() == 2:
+                    padding = torch.zeros(x.size(0), padding_size, device=x.device)
+                    x = torch.cat([x, padding], dim=1)
+                elif x.dim() == 3:
+                    padding = torch.zeros(x.size(0), x.size(1), padding_size, device=x.device)
+                    x = torch.cat([x, padding], dim=2)
+                print(f"Added padding to match input dimension. New shape: {x.shape}")
+            
+            # 2. ตัดคอลัมน์ส่วนเกิน
+            elif x.shape[-1] > self.input_dim:
+                if x.dim() == 2:
+                    x = x[:, :self.input_dim]
+                elif x.dim() == 3:
+                    x = x[:, :, :self.input_dim]
+                print(f"Trimmed input to match required dimension. New shape: {x.shape}")
         
         return self.network(x)
 

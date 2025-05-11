@@ -2,6 +2,7 @@ import os
 import logging
 from datetime import datetime
 import json
+import pandas as pd
 
 from src.data.managers.data_manager import MarketDataManager
 from src.models.model_factory import ModelFactory
@@ -123,9 +124,30 @@ def handle_model(args):
     )
     
     # สร้างโมเดล
+    # แสดงข้อมูลสำคัญเพื่อการดีบัก
+    logger.info(f"ข้อมูลมีคอลัมน์: {data_manager.data.columns.tolist()}")
+    logger.info(f"รูปร่างของข้อมูล: {data_manager.data.shape}")
+    
+    # คำนวณ input_size ที่ถูกต้อง - แก้ไขการใช้ pd.isna
+    try:
+        import pandas as pd
+        feature_columns = [col for col in data_manager.data.columns 
+                          if col != 'timestamp' and not pd.isna(col)]
+    except:
+        # ทางเลือกถ้ามีปัญหากับ pandas
+        feature_columns = [col for col in data_manager.data.columns 
+                          if col != 'timestamp' and col is not None]
+    
+    input_size = len(feature_columns)
+    logger.info(f"จำนวนคุณลักษณะที่จะใช้: {input_size}")
+    
+    # กำหนดค่า action_dim สำหรับโมเดล DQN (แก้ปัญหา action_dim ไม่ถูกต้อง)
+    action_dim = 4  # กำหนดเป็น 4 ตาม Trading_env.ACTIONS ที่มี NONE=0, LONG=1, SHORT=2, EXIT=3
+    
+    # สร้างโมเดล
     model = ModelFactory.create_model(
         model_type=model_config.get("model_type"),
-        input_size=data_manager.data.shape[1] if 'timestamp' not in data_manager.data.columns else data_manager.data.shape[1] - 1,
+        input_size=input_size,  # ใช้ input_size ที่คำนวณแล้ว
         config=config
     )
     
@@ -162,36 +184,22 @@ def handle_model(args):
     model.save(model_path)
     
     logger.info(f"บันทึกโมเดลที่: {model_path}")
-     # แสดงข้อมูลสำคัญเพื่อการดีบัก
-    logger.info(f"ข้อมูลมีคอลัมน์: {data_manager.data.columns.tolist()}")
-    logger.info(f"รูปร่างของข้อมูล: {data_manager.data.shape}")
     
-    # คำนวณ input_size ที่ถูกต้อง
-    feature_columns = [col for col in data_manager.data.columns if col != 'timestamp' and not pd.isna(col)]
-    input_size = len(feature_columns)
-    logger.info(f"จำนวนคุณลักษณะที่จะใช้: {input_size}")
-
-    print("Shape of data:", data_manager.data.shape)
-    print("Columns:", data_manager.data.columns.tolist())
-    
-    # สร้างโมเดล
-    model = ModelFactory.create_model(
-        model_type=model_config.get("model_type"),
-        input_size=input_size,  # ใช้ input_size ที่คำนวณแล้ว
-        config=config
-    )
-    
-    # ประเมินโมเดลกับชุดข้อมูล test
-    metrics = model.evaluate(training_data["test_loader"])
-    
-    print("\nผลการประเมินโมเดลกับชุดข้อมูล test:")
-    for metric_name, metric_value in metrics.items():
-        print(f"  {metric_name}: {metric_value}")
-    
-    # บันทึกผลการประเมิน
-    metrics_path = os.path.join(model_dir, "test_metrics.json")
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics, f, indent=2)
+    # ประเมินโมเดลกับชุดข้อมูล test ถ้ามี
+    if "test_loader" in training_data:
+        try:
+            metrics = model.evaluate(training_data["test_loader"])
+            
+            print("\nผลการประเมินโมเดลกับชุดข้อมูล test:")
+            for metric_name, metric_value in metrics.items():
+                print(f"  {metric_name}: {metric_value}")
+            
+            # บันทึกผลการประเมิน
+            metrics_path = os.path.join(model_dir, "test_metrics.json")
+            with open(metrics_path, 'w') as f:
+                json.dump(metrics, f, indent=2)
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการประเมินโมเดล: {e}")
 
 def handle_evaluate(args):
     """
