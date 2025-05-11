@@ -10,16 +10,6 @@ def calculate_returns(
     equity_curve: Union[List[float], np.ndarray],
     log_returns: bool = False
 ) -> np.ndarray:
-    """
-    คำนวณอัตราผลตอบแทนจากเส้นทุน
-
-    Parameters:
-    equity_curve (List[float] or np.ndarray): เส้นทุนหรือเงินทุนในแต่ละช่วงเวลา
-    log_returns (bool): หากเป็น True จะคำนวณ log returns แทน simple returns
-
-    Returns:
-    np.ndarray: อัตราผลตอบแทนในแต่ละช่วงเวลา
-    """
     equity = np.asarray(equity_curve)
     
     if log_returns:
@@ -36,17 +26,6 @@ def calculate_sharpe_ratio(
     risk_free_rate: float = 0.0,
     periods_per_year: int = 252
 ) -> float:
-    """
-    คำนวณอัตราส่วนชาร์ป (Sharpe Ratio)
-
-    Parameters:
-    returns (List[float] or np.ndarray): อัตราผลตอบแทนในแต่ละช่วงเวลา
-    risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
-    periods_per_year (int): จำนวนช่วงเวลาต่อปี (252: วันทำการ, 365: วันปกติ, 12: เดือน)
-
-    Returns:
-    float: อัตราส่วนชาร์ป (annualized)
-    """
     if len(returns) < 2:
         return 0.0
     
@@ -70,18 +49,6 @@ def calculate_sharpe_ratio(
 def calculate_max_drawdown(
     equity_curve: Union[List[float], np.ndarray]
 ) -> Tuple[float, int, int]:
-    """
-    คำนวณ maximum drawdown และช่วงเวลาที่เกิด
-
-    Parameters:
-    equity_curve (List[float] or np.ndarray): เส้นทุนหรือเงินทุนในแต่ละช่วงเวลา
-
-    Returns:
-    Tuple[float, int, int]: (max_drawdown, peak_idx, trough_idx)
-        - max_drawdown: ค่า drawdown สูงสุด (เป็นสัดส่วน)
-        - peak_idx: ดัชนีของจุด peak
-        - trough_idx: ดัชนีของจุด trough
-    """
     equity = np.asarray(equity_curve)
     
     if len(equity) < 2:
@@ -110,18 +77,6 @@ def calculate_sortino_ratio(
     periods_per_year: int = 252,
     target_return: float = 0.0
 ) -> float:
-    """
-    คำนวณอัตราส่วนซอร์ติโน (Sortino Ratio)
-
-    Parameters:
-    returns (List[float] or np.ndarray): อัตราผลตอบแทนในแต่ละช่วงเวลา
-    risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
-    periods_per_year (int): จำนวนช่วงเวลาต่อปี
-    target_return (float): อัตราผลตอบแทนเป้าหมายต่อช่วงเวลา
-
-    Returns:
-    float: อัตราส่วนซอร์ติโน (annualized)
-    """
     if len(returns) < 2:
         return 0.0
     
@@ -147,15 +102,6 @@ def calculate_sortino_ratio(
 def calculate_win_rate(
     trade_returns: Union[List[float], np.ndarray]
 ) -> float:
-    """
-    คำนวณอัตราการชนะ (Win Rate)
-
-    Parameters:
-    trade_returns (List[float] or np.ndarray): ผลตอบแทนของแต่ละการเทรด
-
-    Returns:
-    float: อัตราการชนะ (0.0 - 1.0)
-    """
     if len(trade_returns) == 0:
         return 0.0
     
@@ -167,15 +113,6 @@ def calculate_win_rate(
 def calculate_profit_factor(
     trade_returns: Union[List[float], np.ndarray]
 ) -> float:
-    """
-    คำนวณ Profit Factor
-
-    Parameters:
-    trade_returns (List[float] or np.ndarray): ผลตอบแทนของแต่ละการเทรด
-
-    Returns:
-    float: Profit Factor (gross profits / gross losses)
-    """
     trades = np.asarray(trade_returns)
     
     if len(trades) == 0:
@@ -193,16 +130,6 @@ def calculate_cagr(
     equity_curve: Union[List[float], np.ndarray],
     periods_per_year: int = 252
 ) -> float:
-    """
-    คำนวณอัตราการเติบโตเฉลี่ยต่อปี (CAGR)
-
-    Parameters:
-    equity_curve (List[float] or np.ndarray): เส้นทุนหรือเงินทุนในแต่ละช่วงเวลา
-    periods_per_year (int): จำนวนช่วงเวลาต่อปี
-
-    Returns:
-    float: CAGR (Compound Annual Growth Rate)
-    """
     equity = np.asarray(equity_curve)
     
     if len(equity) <= 1:
@@ -220,16 +147,6 @@ def calculate_volatility(
     returns: Union[List[float], np.ndarray],
     periods_per_year: int = 252
 ) -> float:
-    """
-    คำนวณความผันผวน (annualized)
-
-    Parameters:
-    returns (List[float] or np.ndarray): อัตราผลตอบแทนในแต่ละช่วงเวลา
-    periods_per_year (int): จำนวนช่วงเวลาต่อปี
-
-    Returns:
-    float: ความผันผวนรายปี
-    """
     if len(returns) < 2:
         return 0.0
     
@@ -240,9 +157,6 @@ def calculate_volatility(
 
 @dataclass
 class RiskMetrics:
-    """
-    เก็บข้อมูลการวัดความเสี่ยงต่างๆ
-    """
     sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
     max_drawdown: float = 0.0
@@ -255,7 +169,6 @@ class RiskMetrics:
     calmar_ratio: float = 0.0  # Returns / Max Drawdown
     
     def to_dict(self) -> Dict[str, float]:
-        """แปลงเป็น dict"""
         return {
             "sharpe_ratio": self.sharpe_ratio,
             "sortino_ratio": self.sortino_ratio,
@@ -269,19 +182,8 @@ class RiskMetrics:
             "calmar_ratio": self.calmar_ratio
         }
     
-class PerformanceTracker:
-    """
-    ติดตามและคำนวณประสิทธิภาพของระบบเทรด
-    """
-    
+class PerformanceTracker:  
     def __init__(self, initial_equity: float = 10000.0, periods_per_year: int = 252):
-        """
-        กำหนดค่าเริ่มต้นสำหรับ PerformanceTracker
-        
-        Parameters:
-        initial_equity (float): เงินทุนเริ่มต้น
-        periods_per_year (int): จำนวนช่วงเวลาต่อปี
-        """
         self.initial_equity = initial_equity
         self.periods_per_year = periods_per_year
         
@@ -299,15 +201,6 @@ class PerformanceTracker:
     
     def update(self, equity: float, timestamp: Optional[pd.Timestamp] = None, 
               position: int = 0, trade_return: Optional[float] = None):
-        """
-        อัพเดตข้อมูลประสิทธิภาพ
-        
-        Parameters:
-        equity (float): มูลค่าพอร์ตล่าสุด
-        timestamp (pd.Timestamp, optional): เวลาที่อัพเดต
-        position (int): ตำแหน่งปัจจุบัน (0: ไม่มี, 1: Long, -1: Short)
-        trade_return (float, optional): ผลตอบแทนจากการเทรดครั้งล่าสุด
-        """
         # เพิ่มข้อมูลใหม่
         self.equity_curve.append(equity)
         
@@ -333,15 +226,6 @@ class PerformanceTracker:
                 self.losing_trades += 1
     
     def calculate_metrics(self, risk_free_rate: float = 0.0) -> Dict[str, float]:
-        """
-        คำนวณสถิติประสิทธิภาพและความเสี่ยงทั้งหมด
-        
-        Parameters:
-        risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
-        
-        Returns:
-        Dict[str, float]: สถิติต่างๆ
-        """
         metrics = {}
         
         # สถิติผลตอบแทน
@@ -391,15 +275,6 @@ class PerformanceTracker:
         return metrics
     
     def get_risk_metrics(self, risk_free_rate: float = 0.0) -> RiskMetrics:
-        """
-        คำนวณและคืนค่าเมตริกความเสี่ยง
-        
-        Parameters:
-        risk_free_rate (float): อัตราผลตอบแทนที่ปราศจากความเสี่ยง (annualized)
-        
-        Returns:
-        RiskMetrics: เมตริกความเสี่ยงต่างๆ
-        """
         if len(self.returns) < 2:
             return RiskMetrics()
         
@@ -438,12 +313,6 @@ class PerformanceTracker:
         return metrics
     
     def to_dataframe(self) -> pd.DataFrame:
-        """
-        แปลงข้อมูลประสิทธิภาพเป็น DataFrame
-        
-        Returns:
-        pd.DataFrame: DataFrame ของข้อมูลประสิทธิภาพ
-        """
         data = {
             'equity': self.equity_curve[1:],  # ตัดค่าเริ่มต้นออก
             'position': self.positions
@@ -460,12 +329,6 @@ class PerformanceTracker:
         return df
     
     def reset(self, initial_equity: Optional[float] = None):
-        """
-        รีเซ็ตข้อมูลประสิทธิภาพ
-        
-        Parameters:
-        initial_equity (float, optional): เงินทุนเริ่มต้นใหม่
-        """
         if initial_equity is not None:
             self.initial_equity = initial_equity
         
