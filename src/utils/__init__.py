@@ -6,9 +6,10 @@ from .metrics import (
     calculate_cagr, calculate_volatility, RiskMetrics, PerformanceTracker
 )
 from .visualization import (
-    plot_equity_curve, plot_returns_distribution, plot_drawdown_periods,
-    plot_trade_history, plot_underwater_chart, plot_monthly_returns_heatmap,
-    create_performance_tearsheet, save_figure, TradingDashboard
+    plot_equity_curve, save_figure, plot_returns_distribution,
+    plot_drawdown_periods, plot_trade_history, plot_underwater_chart,
+    plot_monthly_returns_heatmap, create_performance_tearsheet,
+    plot_backtest_results, plot_backtest_analysis, TradingDashboard
 )
 
 __all__ = [
@@ -17,7 +18,8 @@ __all__ = [
     'calculate_returns', 'calculate_sharpe_ratio', 'calculate_max_drawdown',
     'calculate_sortino_ratio', 'calculate_win_rate', 'calculate_profit_factor',
     'calculate_cagr', 'calculate_volatility', 'RiskMetrics', 'PerformanceTracker',
-    'plot_equity_curve', 'plot_returns_distribution', 'plot_drawdown_periods',
-    'plot_trade_history', 'plot_underwater_chart', 'plot_monthly_returns_heatmap',
-    'create_performance_tearsheet', 'save_figure', 'TradingDashboard'
+    'plot_equity_curve', 'save_figure', 'plot_returns_distribution',
+    'plot_drawdown_periods', 'plot_trade_history', 'plot_underwater_chart',
+    'plot_monthly_returns_heatmap', 'create_performance_tearsheet', 
+    'plot_backtest_results', 'plot_backtest_analysis', 'TradingDashboard'
 ]
