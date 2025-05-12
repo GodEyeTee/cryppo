@@ -1,36 +1,18 @@
-"""
-โมดูลสำหรับการทำความสะอาดข้อมูล (Data Cleaning) ใน CRYPPO
-"""
-
 import numpy as np
 import pandas as pd
 import logging
 from typing import Dict, List, Tuple, Optional, Union, Any
 
-# ตั้งค่า logger
 logger = logging.getLogger(__name__)
 
 def remove_duplicates(df: pd.DataFrame, subset: Optional[List[str]] = None) -> pd.DataFrame:
-    """
-    ลบแถวที่ซ้ำกันในข้อมูล
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการทำความสะอาด
-    subset (list, optional): รายการคอลัมน์ที่ใช้ในการพิจารณาว่าซ้ำกันหรือไม่
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่ลบข้อมูลซ้ำแล้ว
-    """
     original_size = len(df)
     
-    # ถ้าไม่ระบุ subset และมีคอลัมน์ 'timestamp' ให้ใช้คอลัมน์นี้ในการพิจารณา
     if subset is None and 'timestamp' in df.columns:
         subset = ['timestamp']
-    
-    # ลบข้อมูลซ้ำ
+        
     df_clean = df.drop_duplicates(subset=subset).reset_index(drop=True)
-    
-    # แสดงจำนวนแถวที่ถูกลบ
+
     removed_rows = original_size - len(df_clean)
     if removed_rows > 0:
         logger.info(f"ลบข้อมูลซ้ำแล้ว {removed_rows} แถว ({removed_rows/original_size:.2%} ของข้อมูลทั้งหมด)")
@@ -42,114 +24,59 @@ def handle_missing_values(
     strategy: str = 'ffill', 
     fill_value: Optional[float] = None
 ) -> pd.DataFrame:
-    """
-    จัดการกับค่าที่หายไปในข้อมูล
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการทำความสะอาด
-    strategy (str): กลยุทธ์ในการเติมค่าที่หายไป ('ffill', 'bfill', 'value', 'mean', 'median', 'mode')
-    fill_value (float, optional): ค่าที่ใช้เติมเมื่อใช้กลยุทธ์ 'value'
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่เติมค่าที่หายไปแล้ว
-    """
-    # ตรวจสอบค่าที่หายไป
     missing_count = df.isnull().sum().sum()
-    
     if missing_count == 0:
         return df
-    
-    # คัดลอก DataFrame
+
     df_clean = df.copy()
-    
-    # จัดการตามกลยุทธ์ที่เลือก
     if strategy == 'ffill':
-        # เติมด้วยค่าก่อนหน้า
         df_clean = df_clean.ffill()
-        
-        # ถ้ายังมีค่าที่หายไป (เช่น ค่าแรกๆ) ให้เติมด้วยค่าถัดไป
         df_clean = df_clean.bfill()
     
     elif strategy == 'bfill':
-        # เติมด้วยค่าถัดไป
         df_clean = df_clean.bfill()
-        
-        # ถ้ายังมีค่าที่หายไป (เช่น ค่าสุดท้าย) ให้เติมด้วยค่าก่อนหน้า
         df_clean = df_clean.ffill()
     
     elif strategy == 'value':
-        # เติมด้วยค่าที่กำหนด
         if fill_value is None:
             fill_value = 0
         
         df_clean = df_clean.fillna(fill_value)
     
     elif strategy == 'mean':
-        # เติมด้วยค่าเฉลี่ย (สำหรับคอลัมน์ตัวเลขเท่านั้น)
         for col in df_clean.select_dtypes(include=['number']).columns:
             df_clean[col] = df_clean[col].fillna(df_clean[col].mean())
-        
-        # สำหรับคอลัมน์ที่ไม่ใช่ตัวเลข ให้เติมด้วยค่าก่อนหน้าและค่าถัดไป
         df_clean = df_clean.ffill().bfill()
-    
+
     elif strategy == 'median':
-        # เติมด้วยค่ามัธยฐาน (สำหรับคอลัมน์ตัวเลขเท่านั้น)
         for col in df_clean.select_dtypes(include=['number']).columns:
             df_clean[col] = df_clean[col].fillna(df_clean[col].median())
-        
-        # สำหรับคอลัมน์ที่ไม่ใช่ตัวเลข ให้เติมด้วยค่าก่อนหน้าและค่าถัดไป
         df_clean = df_clean.ffill().bfill()
-    
     elif strategy == 'mode':
-        # เติมด้วยค่าฐานนิยม
         for col in df_clean.columns:
             df_clean[col] = df_clean[col].fillna(df_clean[col].mode()[0] if not df_clean[col].mode().empty else np.nan)
-        
-        # ถ้ายังมีค่าที่หายไป ให้เติมด้วยค่าก่อนหน้าและค่าถัดไป
         df_clean = df_clean.ffill().bfill()
     
     else:
         raise ValueError(f"กลยุทธ์ไม่รองรับ: {strategy}")
-    
-    # ตรวจสอบว่ายังมีค่าที่หายไปหรือไม่
+
     remaining_missing = df_clean.isnull().sum().sum()
-    
     if remaining_missing > 0:
         logger.warning(f"ยังมีค่าที่หายไป {remaining_missing} ค่าหลังจากใช้กลยุทธ์ {strategy}")
     else:
         logger.info(f"เติมค่าที่หายไปทั้งหมด {missing_count} ค่าแล้ว โดยใช้กลยุทธ์ {strategy}")
-    
     return df_clean
-
 def remove_outliers(
     df: pd.DataFrame, 
     columns: Optional[List[str]] = None, 
     method: str = 'zscore', 
     threshold: float = 3.0
 ) -> pd.DataFrame:
-    """
-    กำจัด outliers ในข้อมูล
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการทำความสะอาด
-    columns (list, optional): รายการคอลัมน์ที่ต้องการตรวจสอบ outliers
-    method (str): วิธีการตรวจสอบ outliers ('zscore', 'iqr')
-    threshold (float): เกณฑ์ในการพิจารณาว่าเป็น outlier
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่กำจัด outliers แล้ว
-    """
-    # คัดลอก DataFrame
     df_clean = df.copy()
-    
-    # ถ้าไม่ระบุคอลัมน์ ให้ใช้คอลัมน์ตัวเลขทั้งหมด
     if columns is None:
-        # ไม่รวมคอลัมน์ timestamp และคอลัมน์ดัชนี
         exclude_columns = ['timestamp', 'date', 'time', 'index']
         columns = [col for col in df_clean.select_dtypes(include=['number']).columns
                   if col not in exclude_columns]
-    
-    # ตรวจสอบและกำจัด outliers
     outlier_count = 0
     
     for col in columns:
@@ -162,19 +89,18 @@ def remove_outliers(
             std = df_clean[col].std()
             
             if std == 0:
-                continue  # ข้ามคอลัมน์ที่มีค่าเบี่ยงเบนมาตรฐานเป็น 0
+                continue
             
             z_scores = (df_clean[col] - mean) / std
             outliers = (z_scores.abs() > threshold)
             
         elif method == 'iqr':
-            # ใช้ Interquartile Range (IQR)
             q1 = df_clean[col].quantile(0.25)
             q3 = df_clean[col].quantile(0.75)
             iqr = q3 - q1
             
             if iqr == 0:
-                continue  # ข้ามคอลัมน์ที่มี IQR เป็น 0
+                continue
             
             lower_bound = q1 - threshold * iqr
             upper_bound = q3 + threshold * iqr
@@ -183,8 +109,7 @@ def remove_outliers(
             
         else:
             raise ValueError(f"วิธีการไม่รองรับ: {method}")
-        
-        # แทนที่ outliers ด้วยค่าเฉลี่ย
+
         if outliers.sum() > 0:
             outlier_count += outliers.sum()
             df_clean.loc[outliers, col] = mean if method == 'zscore' else df_clean[col].median()
@@ -199,48 +124,29 @@ def fill_missing_timestamps(
     freq: str = '1min', 
     fill_method: str = 'ffill'
 ) -> pd.DataFrame:
-    """
-    เติมข้อมูลที่หายไปสำหรับช่วงเวลาที่ไม่มีข้อมูล
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการทำความสะอาด
-    freq (str): ความถี่ของข้อมูล (เช่น '1min', '5min', '1h')
-    fill_method (str): วิธีการเติมข้อมูล ('ffill', 'bfill', 'value')
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่เติมข้อมูลแล้ว
-    """
-    # ตรวจสอบว่ามีคอลัมน์ timestamp หรือไม่
     if 'timestamp' not in df.columns:
         raise ValueError("DataFrame ไม่มีคอลัมน์ 'timestamp'")
     
-    # ตรวจสอบประเภทข้อมูลของคอลัมน์ timestamp
     if not pd.api.types.is_datetime64_dtype(df['timestamp']):
         df = df.copy()
         df['timestamp'] = pd.to_datetime(df['timestamp'])
     
-    # ตั้ง timestamp เป็นดัชนี
     df_indexed = df.set_index('timestamp')
-    
-    # สร้างช่วงเวลาที่ครบถ้วน
+
     full_range = pd.date_range(start=df_indexed.index.min(), end=df_indexed.index.max(), freq=freq)
-    
-    # สร้าง DataFrame ใหม่ด้วยดัชนีที่ครบถ้วน
+
     df_filled = df_indexed.reindex(full_range)
     
     # เติมข้อมูลที่หายไป
     if fill_method == 'ffill':
         df_filled = df_filled.ffill()
-        # ถ้ายังมีค่าที่หายไป (เช่น ค่าแรกๆ) ให้เติมด้วยค่าถัดไป
         df_filled = df_filled.bfill()
     
     elif fill_method == 'bfill':
         df_filled = df_filled.bfill()
-        # ถ้ายังมีค่าที่หายไป (เช่น ค่าสุดท้าย) ให้เติมด้วยค่าก่อนหน้า
         df_filled = df_filled.ffill()
     
     elif fill_method == 'value':
-        # สำหรับคอลัมน์ OHLCV ให้เติมด้วยค่าที่เหมาะสม
         if 'open' in df_filled.columns:
             df_filled['open'] = df_filled['open'].ffill()
         
@@ -281,33 +187,14 @@ def detect_price_anomalies(
     threshold: float = 0.1, 
     window_size: int = 5
 ) -> pd.DataFrame:
-    """
-    ตรวจสอบและแก้ไขความผิดปกติของราคา
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการตรวจสอบ
-    price_column (str): ชื่อคอลัมน์ราคา
-    method (str): วิธีการตรวจสอบ ('diff', 'percent', 'zscore')
-    threshold (float): เกณฑ์ในการพิจารณาว่าผิดปกติ
-    window_size (int): ขนาดของหน้าต่างสำหรับคำนวณค่าปกติ
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ 'is_anomaly' เพิ่มเติม
-    """
     if price_column not in df.columns:
         raise ValueError(f"ไม่พบคอลัมน์ราคา: {price_column}")
-    
-    # คัดลอก DataFrame
     df_anomaly = df.copy()
-    
-    # ตรวจสอบความผิดปกติของราคา
     if method == 'diff':
-        # ใช้ความแตกต่างของราคา
         price_diff = df_anomaly[price_column].diff().abs()
         anomalies = price_diff > threshold
     
     elif method == 'percent':
-        # ใช้ความแตกต่างของราคาเป็นเปอร์เซ็นต์
         price_pct_change = df_anomaly[price_column].pct_change().abs()
         anomalies = price_pct_change > threshold
     
@@ -345,30 +232,14 @@ def correct_price_anomalies(
     price_columns: List[str] = ['open', 'high', 'low', 'close'], 
     method: str = 'median'
 ) -> pd.DataFrame:
-    """
-    แก้ไขความผิดปกติของราคา
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีคอลัมน์แสดงความผิดปกติ
-    anomaly_column (str): ชื่อคอลัมน์แสดงความผิดปกติ
-    price_columns (list): รายการคอลัมน์ราคาที่ต้องการแก้ไข
-    method (str): วิธีการแก้ไข ('median', 'mean', 'interp', 'previous')
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่แก้ไขความผิดปกติแล้ว
-    """
     if anomaly_column not in df.columns:
         raise ValueError(f"ไม่พบคอลัมน์แสดงความผิดปกติ: {anomaly_column}")
     
-    # ตรวจสอบว่ามีความผิดปกติหรือไม่
     anomaly_count = df[anomaly_column].sum()
     if anomaly_count == 0:
         return df
     
-    # คัดลอก DataFrame
     df_corrected = df.copy()
-    
-    # แก้ไขความผิดปกติในแต่ละคอลัมน์ราคา
     for col in price_columns:
         if col not in df_corrected.columns:
             continue
@@ -432,16 +303,6 @@ def correct_price_anomalies(
     return df_corrected
 
 def ensure_ohlc_integrity(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    ตรวจสอบและแก้ไขความถูกต้องของข้อมูล OHLC (Open, High, Low, Close)
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการตรวจสอบ
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่แก้ไขความถูกต้องแล้ว
-    """
-    # ตรวจสอบว่ามีคอลัมน์ OHLC ครบหรือไม่
     ohlc_columns = ['open', 'high', 'low', 'close']
     missing_columns = [col for col in ohlc_columns if col not in df.columns]
     
@@ -499,16 +360,6 @@ def ensure_ohlc_integrity(df: pd.DataFrame) -> pd.DataFrame:
     return df_fixed
 
 def validate_timestamp_order(df: pd.DataFrame, timestamp_column: str = 'timestamp') -> pd.DataFrame:
-    """
-    ตรวจสอบและแก้ไขลำดับของ timestamp ให้เรียงลำดับถูกต้อง
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการตรวจสอบ
-    timestamp_column (str): ชื่อคอลัมน์ timestamp
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่เรียงลำดับถูกต้องแล้ว
-    """
     if timestamp_column not in df.columns:
         logger.warning(f"ไม่พบคอลัมน์ {timestamp_column} จึงไม่สามารถตรวจสอบลำดับ timestamp ได้")
         return df
@@ -534,17 +385,6 @@ def consolidate_duplicate_timestamps(
     timestamp_column: str = 'timestamp', 
     method: str = 'last'
 ) -> pd.DataFrame:
-    """
-    รวมแถวที่มี timestamp ซ้ำกัน
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่ต้องการตรวจสอบ
-    timestamp_column (str): ชื่อคอลัมน์ timestamp
-    method (str): วิธีการรวม ('last', 'first', 'mean', 'max', 'min')
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่รวมแถวที่มี timestamp ซ้ำกันแล้ว
-    """
     if timestamp_column not in df.columns:
         logger.warning(f"ไม่พบคอลัมน์ {timestamp_column} จึงไม่สามารถรวมแถวที่มี timestamp ซ้ำกันได้")
         return df
