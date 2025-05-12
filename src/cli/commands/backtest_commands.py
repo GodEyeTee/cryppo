@@ -15,59 +15,80 @@ from src.utils.visualization import plot_backtest_results
 logger = logging.getLogger('cli.backtest')
 
 def setup_run_parser(parser):
-    parser.add_argument("--model", type=str, required=True, help="ไฟล์โมเดลที่ต้องการทดสอบ")
-    parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ใช้ทดสอบ")
-    parser.add_argument("--output", type=str, required=True, help="ไดเรกทอรีสำหรับบันทึกผลการทดสอบ")
-    parser.add_argument("--start-date", type=str, default=None, help="วันที่เริ่มต้นทดสอบ (YYYY-MM-DD)")
-    parser.add_argument("--end-date", type=str, default=None, help="วันที่สิ้นสุดการทดสอบ (YYYY-MM-DD)")
-    parser.add_argument("--initial-balance", type=float, default=None, help="เงินทุนเริ่มต้น")
-    parser.add_argument("--leverage", type=float, default=None, help="คูณทุน")
-    parser.add_argument("--fee-rate", type=float, default=None, help="อัตราค่าธรรมเนียม")
-    parser.add_argument("--stop-loss", type=float, default=None, help="การจำกัดการขาดทุน (เปอร์เซ็นต์)")
-    parser.add_argument("--take-profit", type=float, default=None, help="การทำกำไร (เปอร์เซ็นต์)")
-    parser.add_argument("--window-size", type=int, default=None, help="ขนาดของหน้าต่างข้อมูล")
-    parser.add_argument("--batch-size", type=int, default=None, help="ขนาดของแต่ละ batch")
-    parser.add_argument("--use-gpu", action="store_true", default=None, help="ใช้ GPU ในการทดสอบ")
-    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false", help="ไม่ใช้ GPU ในการทดสอบ")
-    parser.add_argument("--plot", action="store_true", help="สร้างกราฟผลการทดสอบ")
-    parser.add_argument("--verbose", action="store_true", help="แสดงรายละเอียดการทดสอบ")
-    parser.add_argument("--config", type=str, default=None, help="ไฟล์การตั้งค่าเฉพาะสำหรับการทดสอบ")
+    parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--start-date", type=str, default=None)
+    parser.add_argument("--end-date", type=str, default=None)
+    parser.add_argument("--initial-balance", type=float, default=None)
+    parser.add_argument("--leverage", type=float, default=None)
+    parser.add_argument("--fee-rate", type=float, default=None)
+    parser.add_argument("--stop-loss", type=float, default=None)
+    parser.add_argument("--take-profit", type=float, default=None)
+    parser.add_argument("--window-size", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--use-gpu", action="store_true", default=None)
+    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false")
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--config", type=str, default=None)
 
 def setup_analyze_parser(parser):
-    parser.add_argument("--input", type=str, required=True, help="ไฟล์ผลการทดสอบที่ต้องการวิเคราะห์")
-    parser.add_argument("--output", type=str, default=None, help="ไฟล์สำหรับบันทึกผลการวิเคราะห์")
-    parser.add_argument("--metrics", type=str, default="all", 
-                      help="รายการ metrics ที่ต้องการวิเคราะห์ (คั่นด้วยเครื่องหมายจุลภาค)")
-    parser.add_argument("--benchmark", type=str, default=None, 
-                      help="ไฟล์ผลการทดสอบที่ใช้เป็น benchmark (คั่นด้วยเครื่องหมายจุลภาค)")
-    parser.add_argument("--plot", choices=["trades", "equity", "returns", "drawdown", "all"],
-                      default="all", help="กราฟที่ต้องการแสดง")
-    parser.add_argument("--period", choices=["daily", "weekly", "monthly"], 
-                      default="daily", help="ช่วงเวลาสำหรับการวิเคราะห์")
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--metrics", type=str, default="all")
+    parser.add_argument("--benchmark", type=str, default=None)
+    parser.add_argument("--plot", choices=["trades", "equity", "returns", "drawdown", "all"], default="all")
+    parser.add_argument("--period", choices=["daily", "weekly", "monthly"], default="daily")
 
-def calculate_basic_metrics(trades_df, initial_equity, periods_per_year=252):
-    tracker = PerformanceTracker(initial_equity=initial_equity, periods_per_year=periods_per_year)
+def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, periods_per_year=252):
+    if trades_df.empty:
+        logger.warning("ไม่มีข้อมูลการเทรดสำหรับการคำนวณเมตริก")
+        return {}
     
+    metrics = {}
+    initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
+    
+    # Calculate basic metrics
+    tracker = PerformanceTracker(initial_equity=initial_equity, periods_per_year=periods_per_year)
     for i in range(1, len(trades_df)):
         equity = trades_df['portfolio_value'].iloc[i]
         position = trades_df['position'].iloc[i] if 'position' in trades_df.columns else 0
         timestamp = None
         if 'timestamp' in trades_df.columns:
             timestamp = pd.to_datetime(trades_df['timestamp'].iloc[i])
-        
         tracker.update(equity=equity, timestamp=timestamp, position=position)
     
-    return tracker.calculate_metrics(risk_free_rate=0.0)
-
-def calculate_trade_analysis_metrics(trades_df):
-    metrics = {}
+    metrics.update(tracker.calculate_metrics(risk_free_rate=risk_free_rate))
+    
+    # Add time period metrics
+    if raw_data is not None and 'timestamp' in trades_df.columns:
+        first_date = pd.to_datetime(trades_df['timestamp'].iloc[0]).date()
+        last_date = pd.to_datetime(trades_df['timestamp'].iloc[-1]).date()
+        days_diff = (last_date - first_date).days
+        metrics['trading_days'] = days_diff if days_diff > 0 else 1
+        
+        if hasattr(raw_data, 'columns') and 'close' in raw_data.columns and len(raw_data) > 1:
+            try:
+                if hasattr(raw_data.index, 'date'):
+                    mask = (raw_data.index.date >= first_date) & (raw_data.index.date <= last_date)
+                    raw_data_in_range = raw_data.loc[mask]
+                else:
+                    raw_data_in_range = raw_data
+                
+                if len(raw_data_in_range) > 1:
+                    first_price = raw_data_in_range['close'].iloc[0]
+                    last_price = raw_data_in_range['close'].iloc[-1]
+                    metrics['buy_hold_return'] = ((last_price / first_price) - 1) * 100
+            except Exception as e:
+                logger.warning(f"ไม่สามารถคำนวณผลตอบแทนของ Buy & Hold: {e}")
+    
+    # Add trade analysis metrics
     if 'action' in trades_df.columns and 'position' in trades_df.columns:
         positions = trades_df['position'].values
         
-        position_changes = []
-        for i in range(1, len(positions)):
-            if positions[i] != positions[i-1]:
-                position_changes.append(i)
+        position_changes = [i for i in range(1, len(positions)) if positions[i] != positions[i-1]]
+        
         trade_count = 0
         winning_trades = 0
         losing_trades = 0
@@ -98,42 +119,6 @@ def calculate_trade_analysis_metrics(trades_df):
     
     return metrics
 
-def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, periods_per_year=252):
-    if trades_df.empty:
-        logger.warning("ไม่มีข้อมูลการเทรดสำหรับการคำนวณเมตริก")
-        return {}
-    
-    # คำนวณเมตริกพื้นฐาน
-    initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
-    metrics = calculate_basic_metrics(trades_df, initial_equity, periods_per_year)
-    
-    # เพิ่มเมตริกเกี่ยวกับช่วงเวลา
-    if raw_data is not None and 'timestamp' in trades_df.columns:
-        first_date = pd.to_datetime(trades_df['timestamp'].iloc[0]).date()
-        last_date = pd.to_datetime(trades_df['timestamp'].iloc[-1]).date()
-        days_diff = (last_date - first_date).days
-        metrics['trading_days'] = days_diff if days_diff > 0 else 1
-        
-        if hasattr(raw_data, 'columns') and 'close' in raw_data.columns and len(raw_data) > 1:
-            try:
-                if hasattr(raw_data.index, 'date'):
-                    mask = (raw_data.index.date >= first_date) & (raw_data.index.date <= last_date)
-                    raw_data_in_range = raw_data.loc[mask]
-                else:
-                    raw_data_in_range = raw_data
-                
-                if len(raw_data_in_range) > 1:
-                    first_price = raw_data_in_range['close'].iloc[0]
-                    last_price = raw_data_in_range['close'].iloc[-1]
-                    metrics['buy_hold_return'] = ((last_price / first_price) - 1) * 100
-            except Exception as e:
-                logger.warning(f"ไม่สามารถคำนวณผลตอบแทนของ Buy & Hold: {e}")
-    
-    trade_metrics = calculate_trade_analysis_metrics(trades_df)
-    metrics.update(trade_metrics)
-    
-    return metrics
-
 def handle_run(args):
     config = get_config()
 
@@ -158,6 +143,7 @@ def handle_run(args):
     
     backtest_config = config.extract_subconfig("backtest")
     
+    # Update config from command line args
     if args.window_size:
         config.set("data.window_size", args.window_size)
     
@@ -193,6 +179,7 @@ def handle_run(args):
 
     os.makedirs(args.output, exist_ok=True)
     
+    # Initialize data manager
     data_manager = MarketDataManager(
         file_path=args.input,
         window_size=config.get("data.window_size"),
@@ -203,24 +190,27 @@ def handle_run(args):
         logger.error(f"ไม่สามารถโหลดข้อมูลจาก {args.input} ได้")
         return
 
+    # Filter data based on date range
     if backtest_config.get("start_date") or backtest_config.get("end_date"):
         data_manager.filter_data(
             start_date=backtest_config.get("start_date"),
             end_date=backtest_config.get("end_date")
         )
     
+    # Load data stats
     stats_path = os.path.join(model_dir, "data_stats.json")
     if os.path.exists(stats_path):
         data_manager.load_stats(stats_path)
     
+    # Initialize environment
     env = TradingEnv(
         data_manager=data_manager,
         config=config
     )
 
+    # Load model
     model_type = config.get("model.model_type")
-    input_size = 25  # หรือค่าที่ถูกต้องตามโมเดลของคุณ
-
+    input_size = 25  # Or correct value based on model
     model = ModelFactory.create_model(
         model_type=model_type,
         input_size=input_size,
@@ -229,12 +219,14 @@ def handle_run(args):
     
     model.load(args.model)
 
+    # Create results directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_dir = os.path.join(args.output, f"backtest_{timestamp}")
     os.makedirs(result_dir, exist_ok=True)
 
     logger.info("กำลังทดสอบย้อนหลัง...")
     
+    # Run backtest
     observation = env.reset()
     done = False
     total_reward = 0
@@ -264,6 +256,7 @@ def handle_run(args):
     
     logger.info(f"ทดสอบย้อนหลังเสร็จสิ้น! Total Reward: {total_reward:.4f}, Final Portfolio: {portfolio_values[-1]:.2f}")
 
+    # Create DataFrame with results
     trades_df = pd.DataFrame({
         'timestamp': timestamps,
         'action': actions,
@@ -273,6 +266,7 @@ def handle_run(args):
         'done': dones
     })
     
+    # Save results
     trades_path = os.path.join(result_dir, "trades.csv")
     trades_df.to_csv(trades_path, index=False)
     
@@ -280,13 +274,15 @@ def handle_run(args):
     with open(config_path, 'w') as f:
         json.dump(config.to_dict(), f, indent=2)
     
+    # Calculate metrics
     metrics = calculate_trading_metrics(trades_df, data_manager.raw_data)
     
-    # บันทึก metrics
+    # Save metrics
     metrics_path = os.path.join(result_dir, "metrics.json")
     with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=2)
 
+    # Print summary
     print("\nสรุปผลการทดสอบย้อนหลัง:")
     print(f"จำนวนวันทดสอบ: {metrics.get('trading_days', 'N/A')} วัน")
     print(f"เงินทุนเริ่มต้น: {backtest_config.get('initial_balance', trades_df['portfolio_value'].iloc[0]):.2f}")
@@ -299,17 +295,15 @@ def handle_run(args):
     print(f"จำนวนการเทรดที่ทำกำไร: {metrics.get('winning_trades', 0)}")
     print(f"จำนวนการเทรดที่ขาดทุน: {metrics.get('losing_trades', 0)}")
 
+    # Plot if requested
     if args.plot:
         try:
             fig = plot_backtest_results(trades_df, data_manager.raw_data, metrics)
-            
             plot_path = os.path.join(result_dir, "backtest_results.png")
             fig.savefig(plot_path, dpi=300, bbox_inches='tight')
             plt.close(fig)
-            
             logger.info(f"บันทึกกราฟที่: {plot_path}")
             plt.show()
-        
         except ImportError:
             logger.error("ไม่สามารถสร้างกราฟได้: ไม่พบโมดูล matplotlib")
     
@@ -342,6 +336,7 @@ def handle_analyze(args):
         with open(config_path, 'r') as f:
             config_data = json.load(f)
         
+        # Get metrics
         if os.path.exists(metrics_path):
             with open(metrics_path, 'r') as f:
                 metrics = json.load(f)
@@ -361,20 +356,22 @@ def handle_analyze(args):
                 logger.warning("ไม่พบข้อมูลราคา ใช้เฉพาะข้อมูลการเทรดในการคำนวณ metrics")
                 metrics = calculate_trading_metrics(trades_df)
         
+        # Filter metrics if specified
         if args.metrics != "all":
             metrics_list = [m.strip() for m in args.metrics.split(',')]
             filtered_metrics = {k: v for k, v in metrics.items() if k in metrics_list}
         else:
             filtered_metrics = metrics
         
+        # Print metrics
         print(f"\nผลการวิเคราะห์การทดสอบย้อนหลัง: {os.path.basename(backtest_dir)}")
-        
         for metric_name, metric_value in filtered_metrics.items():
             if isinstance(metric_value, float):
                 print(f"  {metric_name}: {metric_value:.4f}")
             else:
                 print(f"  {metric_name}: {metric_value}")
         
+        # Handle benchmark comparison
         if args.benchmark:
             benchmark_paths = [p.strip() for p in args.benchmark.split(',')]
             
@@ -417,15 +414,17 @@ def handle_analyze(args):
                         else:
                             print(f"  {metric_name}: {model_value} vs {benchmark_value}")
 
+        # Handle plotting
         if args.plot:
             try:
-                
                 data_manager = None
                 if "data" in config_data and "file_path" in config_data["data"]:
                     data_path = config_data["data"]["file_path"]
                     
                     if os.path.exists(data_path):
                         data_manager = MarketDataManager(file_path=data_path)
+                
+                from src.utils.visualization import plot_backtest_analysis
                 fig = plot_backtest_analysis(
                     trades_df, 
                     metrics, 
@@ -442,6 +441,7 @@ def handle_analyze(args):
             except ImportError:
                 logger.error("ไม่สามารถสร้างกราฟได้: ไม่พบโมดูล matplotlib")
         
+        # Save results if requested
         if args.output and not args.plot:
             if not (args.output.endswith('.json') or args.output.endswith('.csv')):
                 output_path = args.output + '.json'
@@ -450,7 +450,6 @@ def handle_analyze(args):
             
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # บันทึกไฟล์
             if output_path.endswith('.json'):
                 with open(output_path, 'w') as f:
                     json.dump(filtered_metrics, f, indent=2)
