@@ -11,41 +11,41 @@ from src.utils.metrics import PerformanceTracker
 
 logger = logging.getLogger('cli.train')
 
+def update_config_from_args(config, args, param_mapping):
+    for arg_name, config_path in param_mapping.items():
+        arg_value = getattr(args, arg_name, None)
+        if arg_value is not None:
+            config.set(config_path, arg_value)
+
 def setup_model_parser(parser):
-    parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ใช้เทรน")
-    parser.add_argument("--output", type=str, required=True, help="ไดเรกทอรีสำหรับบันทึกโมเดล")
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, required=True)
     parser.add_argument("--model-type", type=str, default="double_dqn", 
-                      choices=["dqn", "double_dqn", "dueling_dqn", "per_dqn"],
-                      help="ประเภทของโมเดล")
-    parser.add_argument("--window-size", type=int, default=None, help="ขนาดของหน้าต่างข้อมูล")
-    parser.add_argument("--batch-size", type=int, default=None, help="ขนาดของแต่ละ batch")
-    parser.add_argument("--epochs", type=int, default=None, help="จำนวนรอบการเทรน")
-    parser.add_argument("--learning-rate", type=float, default=None, help="อัตราการเรียนรู้")
-    parser.add_argument("--discount-factor", type=float, default=None, help="discount factor")
-    parser.add_argument("--target-update", type=int, default=None, 
-                      help="ความถี่ในการอัพเดต target network")
-    parser.add_argument("--validation-ratio", type=float, default=0.1, 
-                      help="สัดส่วนข้อมูลสำหรับ validation")
-    parser.add_argument("--test-ratio", type=float, default=0.1, 
-                      help="สัดส่วนข้อมูลสำหรับ test")
-    parser.add_argument("--use-gpu", action="store_true", default=None, help="ใช้ GPU ในการเทรน")
-    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false", help="ไม่ใช้ GPU ในการเทรน")
-    parser.add_argument("--tensorboard", action="store_true", help="บันทึก log สำหรับ TensorBoard")
-    parser.add_argument("--seed", type=int, default=None, help="เลข seed สำหรับความสามารถในการทำซ้ำ")
-    parser.add_argument("--config", type=str, default=None, 
-                      help="ไฟล์การตั้งค่าเฉพาะสำหรับการเทรน")
+                      choices=["dqn", "double_dqn", "dueling_dqn", "per_dqn"])
+    parser.add_argument("--window-size", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--learning-rate", type=float, default=None)
+    parser.add_argument("--discount-factor", type=float, default=None)
+    parser.add_argument("--target-update", type=int, default=None)
+    parser.add_argument("--validation-ratio", type=float, default=0.1)
+    parser.add_argument("--test-ratio", type=float, default=0.1)
+    parser.add_argument("--use-gpu", action="store_true", default=None)
+    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false")
+    parser.add_argument("--tensorboard", action="store_true")
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--config", type=str, default=None)
 
 def setup_evaluate_parser(parser):
-    parser.add_argument("--model", type=str, required=True, help="ไฟล์โมเดลที่ต้องการประเมิน")
-    parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ใช้ประเมิน")
-    parser.add_argument("--output", type=str, default=None, help="ไฟล์สำหรับบันทึกผลการประเมิน")
-    parser.add_argument("--batch-size", type=int, default=None, help="ขนาดของแต่ละ batch")
-    parser.add_argument("--window-size", type=int, default=None, help="ขนาดของหน้าต่างข้อมูล")
-    parser.add_argument("--metrics", type=str, default="all", 
-                      help="รายการ metrics ที่ต้องการประเมิน (คั่นด้วยเครื่องหมายจุลภาค)")
-    parser.add_argument("--plot", action="store_true", help="แสดงกราฟผลการประเมิน")
-    parser.add_argument("--use-gpu", action="store_true", default=None, help="ใช้ GPU ในการประเมิน")
-    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false", help="ไม่ใช้ GPU ในการประเมิน")
+    parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--window-size", type=int, default=None)
+    parser.add_argument("--metrics", type=str, default="all")
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--use-gpu", action="store_true", default=None)
+    parser.add_argument("--no-gpu", dest="use_gpu", action="store_false")
 
 def prepare_training_data(input_path, config, validation_ratio, test_ratio):
     data_manager = MarketDataManager(
@@ -80,7 +80,6 @@ def train_and_save_model(model, training_data, config, model_dir):
     with open(history_path, 'w') as f:
         json.dump(history, f, indent=2)
     
-    # บันทึกโมเดล
     model_path = os.path.join(model_dir, "model.pt")
     model.save(model_path)
     
@@ -121,7 +120,6 @@ def handle_model(args):
     
     data_manager, training_data = data_result
     
-    # สร้างโมเดล
     input_size = training_data["feature_size"]
     model = ModelFactory.create_model(
         model_type=config.get("model.model_type"),
@@ -129,16 +127,13 @@ def handle_model(args):
         config=config
     )
     
-    # ตั้งค่าทิศทางการบันทึก
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_name = f"{config.get('model.model_type')}_{timestamp}"
     model_dir = os.path.join(args.output, model_name)
     os.makedirs(model_dir, exist_ok=True)
     
-    # เทรนและบันทึกโมเดล
     history = train_and_save_model(model, training_data, config, model_dir)
     
-    # บันทึกการตั้งค่าและสถิติข้อมูล
     config_path = os.path.join(model_dir, "config.json")
     with open(config_path, 'w') as f:
         json.dump(config.to_dict(), f, indent=2)
@@ -146,7 +141,6 @@ def handle_model(args):
     stats_path = os.path.join(model_dir, "data_stats.json")
     data_manager.save_stats(stats_path)
     
-    # ประเมินโมเดลกับชุดข้อมูล test ถ้ามี
     if "test_loader" in training_data:
         try:
             metrics = model.evaluate(training_data["test_loader"])
@@ -155,7 +149,6 @@ def handle_model(args):
             for metric_name, metric_value in metrics.items():
                 print(f"  {metric_name}: {metric_value}")
             
-            # บันทึกผลการประเมิน
             metrics_path = os.path.join(model_dir, "test_metrics.json")
             with open(metrics_path, 'w') as f:
                 json.dump(metrics, f, indent=2)
@@ -177,13 +170,11 @@ def handle_evaluate(args):
         model_dir = os.path.dirname(args.model)
         config_path = os.path.join(model_dir, "config.json")
         
-        # ถ้ามีไฟล์การตั้งค่าของโมเดล ให้โหลดก่อน
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 model_config = json.load(f)
                 config.update_from_dict(model_config)
         
-        # ปรับการตั้งค่าตามอาร์กิวเมนต์
         if args.batch_size:
             config.set("model.batch_size", args.batch_size)
         
@@ -193,7 +184,6 @@ def handle_evaluate(args):
         if args.use_gpu is not None:
             config.set("cuda.use_cuda", args.use_gpu)
         
-        # โหลดข้อมูล
         data_manager = MarketDataManager(
             file_path=args.input,
             window_size=config.get("data.window_size"),
@@ -204,18 +194,15 @@ def handle_evaluate(args):
             logger.error(f"ไม่สามารถโหลดข้อมูลจาก {args.input} ได้")
             return
         
-        # โหลดสถิติ
         stats_path = os.path.join(model_dir, "data_stats.json")
         if os.path.exists(stats_path):
             data_manager.load_stats(stats_path)
         
-        # แบ่งข้อมูลสำหรับการประเมิน
         data = data_manager.create_training_data(
             validation_ratio=0,
             test_ratio=0
         )
         
-        # โหลดโมเดล
         model_type = config.get("model.model_type")
         model = ModelFactory.create_model(
             model_type=model_type,
@@ -225,22 +212,17 @@ def handle_evaluate(args):
         
         model.load(args.model)
         
-        # กำหนด metrics ที่ต้องการประเมิน
+        metrics_list = None
         if args.metrics != "all":
             metrics_list = [m.strip() for m in args.metrics.split(',')]
-        else:
-            metrics_list = None
         
-        # ประเมินโมเดล
         metrics = model.evaluate(data["train_loader"], metrics_list)
         
         print(f"\nผลการประเมินโมเดล {os.path.basename(args.model)} กับชุดข้อมูล {os.path.basename(args.input)}:")
         for metric_name, metric_value in metrics.items():
             print(f"  {metric_name}: {metric_value}")
         
-        # บันทึกผลการประเมิน
         if args.output:
-            # สร้างโฟลเดอร์หากไม่มี
             os.makedirs(os.path.dirname(args.output), exist_ok=True)
             
             with open(args.output, 'w') as f:
@@ -248,7 +230,6 @@ def handle_evaluate(args):
             
             logger.info(f"บันทึกผลการประเมินที่: {args.output}")
         
-        # แสดงกราฟผลการประเมิน
         if args.plot:
             try:
                 import matplotlib.pyplot as plt
@@ -259,7 +240,6 @@ def handle_evaluate(args):
                 plt.tight_layout()
                 plt.show()
                 
-                # บันทึกกราฟถ้ามีการระบุ output
                 if args.output:
                     plot_path = os.path.splitext(args.output)[0] + ".png"
                     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
