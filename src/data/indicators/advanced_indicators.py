@@ -1,14 +1,9 @@
-"""
-ตัวชี้วัดขั้นสูงสำหรับ CRYPPO (Cryptocurrency Position Optimization)
-"""
-
 import numpy as np
 import pandas as pd
 import logging
 from typing import Dict, List, Tuple, Optional, Union, Any
 from datetime import datetime, timedelta
 
-# ตั้งค่า logger
 logger = logging.getLogger(__name__)
 
 def calculate_stochastic(
@@ -17,19 +12,6 @@ def calculate_stochastic(
     d_period: int = 3, 
     slowing: int = 3
 ) -> pd.DataFrame:
-    """
-    คำนวณ Stochastic Oscillator
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    k_period (int): ช่วงเวลาสำหรับการคำนวณ %K
-    d_period (int): ช่วงเวลาสำหรับการคำนวณ %D
-    slowing (int): ช่วงเวลาสำหรับการทำให้ %K ช้าลง
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Stochastic Oscillator เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ %K
@@ -52,16 +34,6 @@ def calculate_stochastic(
     return result
 
 def calculate_obv(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    คำนวณ On-Balance Volume (OBV)
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ OBV เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณการเปลี่ยนแปลงราคา
@@ -88,16 +60,6 @@ def calculate_obv(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 def calculate_vwap(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    คำนวณ Volume-Weighted Average Price (VWAP)
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ VWAP เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # ตรวจสอบว่ามีคอลัมน์ timestamp หรือไม่
@@ -137,20 +99,8 @@ def calculate_vwap(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 def calculate_fibonacci_retracement(df: pd.DataFrame, period: int = 100) -> pd.DataFrame:
-    """
-    คำนวณ Fibonacci Retracement
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    period (int): ช่วงเวลาสำหรับการหาจุดสูงสุดและต่ำสุด
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Fibonacci Retracement เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
-    # คำนวณ Fibonacci Retracement ในแต่ละช่วง
     for i in range(period, len(df)):
         # ดึงข้อมูลในช่วงที่กำหนด
         window = df.iloc[i-period:i]
@@ -189,20 +139,6 @@ def calculate_ichimoku_cloud(
     senkou_span_b_period: int = 52, 
     displacement: int = 26
 ) -> pd.DataFrame:
-    """
-    คำนวณ Ichimoku Cloud
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    tenkan_period (int): ช่วงเวลาสำหรับ Tenkan-sen (Conversion Line)
-    kijun_period (int): ช่วงเวลาสำหรับ Kijun-sen (Base Line)
-    senkou_span_b_period (int): ช่วงเวลาสำหรับ Senkou Span B (Leading Span B)
-    displacement (int): ช่วงเวลาที่ Senkou Span ถูกเลื่อนไปข้างหน้า
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Ichimoku Cloud เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ Tenkan-sen (Conversion Line): (highest high + lowest low) / 2 ในช่วง tenkan_period
@@ -239,19 +175,6 @@ def calculate_ichimoku_cloud(
     return result
 
 def calculate_parabolic_sar(df: pd.DataFrame, af_start: float = 0.02, af_increment: float = 0.02, af_max: float = 0.2) -> pd.DataFrame:
-    """
-    คำนวณ Parabolic SAR
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    af_start (float): ค่าเริ่มต้นของ Acceleration Factor
-    af_increment (float): ค่าเพิ่มของ Acceleration Factor
-    af_max (float): ค่าสูงสุดของ Acceleration Factor
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Parabolic SAR เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # ตรวจสอบว่ามีข้อมูลเพียงพอหรือไม่
@@ -337,18 +260,6 @@ def calculate_adx(
     period: int = 14, 
     smoothing: int = 14
 ) -> pd.DataFrame:
-    """
-    คำนวณ Average Directional Index (ADX)
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    period (int): ช่วงเวลาสำหรับการคำนวณ ADX
-    smoothing (int): ช่วงเวลาสำหรับการทำ smoothing
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ ADX เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณการเปลี่ยนแปลงของราคาสูงสุดและต่ำสุด
@@ -397,18 +308,6 @@ def calculate_volume_profile(
     period: int = 20, 
     bins: int = 10
 ) -> pd.DataFrame:
-    """
-    คำนวณ Volume Profile
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    period (int): ช่วงเวลาสำหรับการคำนวณ Volume Profile
-    bins (int): จำนวนช่วงราคาที่แบ่ง
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Volume Profile เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ Volume Profile ในแต่ละช่วง
@@ -451,18 +350,6 @@ def calculate_moving_average_crossover(
     fast_period: int = 10, 
     slow_period: int = 50
 ) -> pd.DataFrame:
-    """
-    คำนวณ Moving Average Crossover
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    fast_period (int): ช่วงเวลาสำหรับ Fast Moving Average
-    slow_period (int): ช่วงเวลาสำหรับ Slow Moving Average
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Moving Average Crossover เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ Moving Averages
@@ -494,16 +381,6 @@ def calculate_moving_average_crossover(
     return result
 
 def calculate_pivot_points(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    คำนวณ Pivot Points (แบบ Standard)
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Pivot Points เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # ตรวจสอบว่ามีคอลัมน์ timestamp หรือไม่
@@ -580,17 +457,6 @@ def calculate_pivot_points(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 def calculate_chaikin_money_flow(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """
-    คำนวณ Chaikin Money Flow
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    period (int): ช่วงเวลาสำหรับการคำนวณ CMF
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ CMF เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ Money Flow Multiplier
@@ -614,17 +480,6 @@ def calculate_chaikin_money_flow(df: pd.DataFrame, period: int = 20) -> pd.DataF
     return result
 
 def calculate_momentum(df: pd.DataFrame, period: int = 10) -> pd.DataFrame:
-    """
-    คำนวณ Momentum
-    
-    Parameters:
-    df (pd.DataFrame): DataFrame ที่มีข้อมูลตลาด
-    period (int): ช่วงเวลาสำหรับการคำนวณ Momentum
-    
-    Returns:
-    pd.DataFrame: DataFrame ที่มีคอลัมน์ Momentum เพิ่มเติม
-    """
-    # สร้าง DataFrame สำหรับผลลัพธ์
     result = pd.DataFrame(index=df.index)
     
     # คำนวณ Momentum
