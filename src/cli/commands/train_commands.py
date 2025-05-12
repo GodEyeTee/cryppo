@@ -12,9 +12,6 @@ from src.utils.metrics import PerformanceTracker
 logger = logging.getLogger('cli.train')
 
 def setup_model_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งเทรนโมเดล
-    """
     parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ใช้เทรน")
     parser.add_argument("--output", type=str, required=True, help="ไดเรกทอรีสำหรับบันทึกโมเดล")
     parser.add_argument("--model-type", type=str, default="double_dqn", 
@@ -39,9 +36,6 @@ def setup_model_parser(parser):
                       help="ไฟล์การตั้งค่าเฉพาะสำหรับการเทรน")
 
 def setup_evaluate_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งประเมินโมเดล
-    """
     parser.add_argument("--model", type=str, required=True, help="ไฟล์โมเดลที่ต้องการประเมิน")
     parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ใช้ประเมิน")
     parser.add_argument("--output", type=str, default=None, help="ไฟล์สำหรับบันทึกผลการประเมิน")
@@ -54,7 +48,6 @@ def setup_evaluate_parser(parser):
     parser.add_argument("--no-gpu", dest="use_gpu", action="store_false", help="ไม่ใช้ GPU ในการประเมิน")
 
 def prepare_training_data(input_path, config, validation_ratio, test_ratio):
-    """โหลดและเตรียมข้อมูลสำหรับการเทรน"""
     data_manager = MarketDataManager(
         file_path=input_path,
         window_size=config.get("data.window_size"),
@@ -64,8 +57,7 @@ def prepare_training_data(input_path, config, validation_ratio, test_ratio):
     if not data_manager.data_loaded:
         logger.error(f"ไม่สามารถโหลดข้อมูลจาก {input_path} ได้")
         return None
-    
-    # แบ่งข้อมูลสำหรับการเทรน
+
     training_data = data_manager.create_training_data(
         validation_ratio=validation_ratio,
         test_ratio=test_ratio
@@ -77,7 +69,6 @@ def prepare_training_data(input_path, config, validation_ratio, test_ratio):
     return data_manager, training_data
 
 def train_and_save_model(model, training_data, config, model_dir):
-    """เทรนและบันทึกโมเดล"""
     history = model.train(
         train_loader=training_data["train_loader"],
         val_loader=training_data["val_loader"],
@@ -85,7 +76,6 @@ def train_and_save_model(model, training_data, config, model_dir):
         log_dir=model_dir if config.get("training.use_tensorboard", False) else None
     )
     
-    # บันทึกประวัติการเทรน
     history_path = os.path.join(model_dir, "training_history.json")
     with open(history_path, 'w') as f:
         json.dump(history, f, indent=2)
@@ -99,15 +89,11 @@ def train_and_save_model(model, training_data, config, model_dir):
     return history
 
 def handle_model(args):
-    """จัดการคำสั่งเทรนโมเดล"""
-    # โหลดการตั้งค่า
     config = get_config()
     
-    # ถ้ามีไฟล์การตั้งค่าเฉพาะ ให้โหลดเพิ่มเติม
     if args.config and os.path.exists(args.config):
         config.load_config(args.config)
     
-    # อัพเดตการตั้งค่าจากอาร์กิวเมนต์โดยใช้ฟังก์ชันช่วยเหลือ
     param_mapping = {
         'model_type': 'model.model_type',
         'window_size': 'data.window_size',
@@ -123,14 +109,12 @@ def handle_model(args):
     
     update_config_from_args(config, args, param_mapping)
     
-    # ตรวจสอบไฟล์นำเข้าและสร้างโฟลเดอร์เอาต์พุต
     if not os.path.exists(args.input):
         logger.error(f"ไม่พบไฟล์: {args.input}")
         return
     
     os.makedirs(args.output, exist_ok=True)
-    
-    # โหลดและเตรียมข้อมูล
+
     data_result = prepare_training_data(args.input, config, args.validation_ratio, args.test_ratio)
     if data_result is None:
         return
@@ -179,13 +163,8 @@ def handle_model(args):
             logger.error(f"เกิดข้อผิดพลาดในการประเมินโมเดล: {e}")
 
 def handle_evaluate(args):
-    """
-    จัดการคำสั่งประเมินโมเดล
-    """
-    # โหลดการตั้งค่า
     config = get_config()
     
-    # ตรวจสอบไฟล์
     if not os.path.exists(args.model):
         logger.error(f"ไม่พบไฟล์โมเดล: {args.model}")
         return
@@ -194,7 +173,6 @@ def handle_evaluate(args):
         logger.error(f"ไม่พบไฟล์ข้อมูล: {args.input}")
         return
     
-    # โหลดโมเดล
     try:
         model_dir = os.path.dirname(args.model)
         config_path = os.path.join(model_dir, "config.json")
