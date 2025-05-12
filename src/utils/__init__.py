@@ -1,13 +1,3 @@
-"""
-ยูทิลิตี้พื้นฐานสำหรับโปรเจค CRYPPO
-
-โมดูลนี้รวมยูทิลิตี้ต่างๆ ที่ใช้ในโปรเจค ได้แก่:
-- การจัดการการตั้งค่า (config_manager)
-- การบันทึกข้อมูล (loggers)
-- การวัดประสิทธิภาพ (metrics)
-- การแสดงผลข้อมูล (visualization)
-"""
-
 from .config_manager import ConfigManager, get_config
 from .loggers import setup_logger, setup_rotating_logger, setup_daily_logger, TensorboardLogger
 from .metrics import (

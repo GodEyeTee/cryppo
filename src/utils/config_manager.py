@@ -2,7 +2,7 @@ import os
 import json
 import yaml
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger('utils.config')
 
@@ -24,34 +24,33 @@ class ConfigManager:
             if os.path.exists(default_config_path):
                 with open(default_config_path, 'r', encoding='utf-8') as f:
                     self.config = yaml.safe_load(f)
-                logger.info(f"โหลดการตั้งค่าเริ่มต้นจาก {default_config_path}")
+                logger.info(f"Loaded default config from {default_config_path}")
             else:
-                logger.warning(f"ไม่พบไฟล์การตั้งค่าเริ่มต้น {default_config_path}")
+                logger.warning(f"Default config file not found: {default_config_path}")
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการโหลดการตั้งค่าเริ่มต้น: {e}")
+            logger.error(f"Error loading default config: {e}")
     
     def load_config(self, config_path: str):
         if not os.path.exists(config_path):
-            logger.error(f"ไม่พบไฟล์การตั้งค่า: {config_path}")
+            logger.error(f"Config file not found: {config_path}")
             return False
         
         try:
-            if config_path.endswith('.yaml') or config_path.endswith('.yml'):
+            if config_path.endswith(('.yaml', '.yml')):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_data = yaml.safe_load(f)
             elif config_path.endswith('.json'):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
             else:
-                logger.error(f"นามสกุลไฟล์ไม่รองรับ: {config_path}")
+                logger.error(f"Unsupported file extension: {config_path}")
                 return False
             
             self.update_from_dict(config_data)
-            
-            logger.info(f"โหลดการตั้งค่าจาก {config_path}")
+            logger.info(f"Loaded config from {config_path}")
             return True
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการโหลดการตั้งค่า: {e}")
+            logger.error(f"Error loading config: {e}")
             return False
     
     def save_config(self, config_path: str, format: str = 'yaml'):
@@ -64,13 +63,13 @@ class ConfigManager:
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(self.config, f, ensure_ascii=False, indent=2)
             else:
-                logger.error(f"รูปแบบไม่รองรับ: {format}")
+                logger.error(f"Unsupported format: {format}")
                 return False
             
-            logger.info(f"บันทึกการตั้งค่าที่ {config_path}")
+            logger.info(f"Saved config to {config_path}")
             return True
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการบันทึกการตั้งค่า: {e}")
+            logger.error(f"Error saving config: {e}")
             return False
     
     def get(self, key: str, default: Any = None) -> Any:
@@ -140,7 +139,6 @@ class ConfigManager:
     def sections(self) -> List[str]:
         return list(self.config.keys())
 
-# Singleton instance
 _config_instance = None
 
 def get_config(config_path: Optional[str] = None) -> ConfigManager:

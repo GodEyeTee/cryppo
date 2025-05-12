@@ -1,30 +1,23 @@
 import os
 import logging
 import logging.handlers
-from datetime import datetime
 from typing import Optional, Dict, Any
 
 def setup_logger(name: str, level: int = logging.INFO, log_file: Optional[str] = None, 
                 formatter: Optional[logging.Formatter] = None) -> logging.Logger:
-
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
-    # ตรวจสอบว่ามี handler แล้วหรือไม่
     if not logger.handlers:
-        # กำหนด formatter
         if formatter is None:
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         
-        # สร้าง console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         
-        # สร้าง file handler (ถ้ามีการระบุ log_file)
         if log_file:
-            # สร้างโฟลเดอร์หากไม่มี
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             
             file_handler = logging.FileHandler(log_file)
@@ -36,25 +29,19 @@ def setup_logger(name: str, level: int = logging.INFO, log_file: Optional[str] =
 
 def setup_rotating_logger(name: str, level: int = logging.INFO, log_dir: str = 'logs', 
                          max_bytes: int = 10485760, backup_count: int = 5) -> logging.Logger:
-    # สร้าง logger
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
-    # ตรวจสอบว่ามี handler แล้วหรือไม่
     if not logger.handlers:
-        # กำหนด formatter
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         
-        # สร้าง console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         
-        # สร้างโฟลเดอร์หากไม่มี
         os.makedirs(log_dir, exist_ok=True)
         
-        # สร้าง rotating file handler
         log_file = os.path.join(log_dir, f"{name}.log")
         file_handler = logging.handlers.RotatingFileHandler(
             log_file, maxBytes=max_bytes, backupCount=backup_count
@@ -67,25 +54,19 @@ def setup_rotating_logger(name: str, level: int = logging.INFO, log_dir: str = '
 
 def setup_daily_logger(name: str, level: int = logging.INFO, log_dir: str = 'logs', 
                       backup_count: int = 30) -> logging.Logger:
-    # สร้าง logger
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
-    # ตรวจสอบว่ามี handler แล้วหรือไม่
     if not logger.handlers:
-        # กำหนด formatter
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         
-        # สร้าง console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         
-        # สร้างโฟลเดอร์หากไม่มี
         os.makedirs(log_dir, exist_ok=True)
         
-        # สร้าง daily file handler
         log_file = os.path.join(log_dir, f"{name}.log")
         file_handler = logging.handlers.TimedRotatingFileHandler(
             log_file, when='midnight', interval=1, backupCount=backup_count
@@ -106,7 +87,7 @@ class TensorboardLogger:
             os.makedirs(log_dir, exist_ok=True)
             self.writer = SummaryWriter(log_dir=log_dir)
         except ImportError:
-            logging.warning("ไม่พบ tensorboard โปรดติดตั้งด้วย 'pip install tensorboard'")
+            logging.warning("Tensorboard not found. Install with 'pip install tensorboard'")
     
     def log_scalar(self, tag: str, value: Any, step: int):
         if self.writer:
