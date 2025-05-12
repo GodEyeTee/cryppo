@@ -1,10 +1,3 @@
-"""
-โมดูลยูทิลิตี้สำหรับโมเดล Reinforcement Learning
-
-โมดูลนี้ประกอบด้วยฟังก์ชันและคลาสที่ใช้ในโมเดล RL ต่างๆ เช่น 
-กลยุทธ์การสำรวจ (exploration strategies) และฟังก์ชันการสูญเสีย (loss functions)
-"""
-
 from src.models.utils.exploration import (
     EpsilonGreedyExploration,
     BoltzmannExploration,
@@ -27,15 +20,12 @@ from src.models.utils.loss_functions import (
 )
 
 __all__ = [
-    # Exploration strategies
     'EpsilonGreedyExploration',
     'BoltzmannExploration',
     'UCBExploration', 
     'NoiseBasedExploration',
     'ParameterSpaceNoise',
     'get_exploration_strategy',
-    
-    # Loss functions
     'huber_loss',
     'mse_loss',
     'quantile_huber_loss',

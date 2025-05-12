@@ -5,12 +5,6 @@ import numpy as np
 from typing import List, Tuple, Dict, Union, Optional, Any
 
 class MLPNetwork(nn.Module):
-    """
-    เครือข่ายประสาทเทียมแบบ Multi-Layer Perceptron (MLP)
-    
-    สำหรับใช้กับข้อมูลอินพุตที่เป็น 1 มิติ เช่น state vectors ในการเรียนรู้แบบเสริมกำลัง
-    """
-    
     def __init__(
         self,
         input_dim: int,
@@ -23,28 +17,12 @@ class MLPNetwork(nn.Module):
         layer_norm: bool = False,
         init_weights: bool = True
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับเครือข่าย MLP
-        
-        Parameters:
-        input_dim (int): ขนาดของอินพุต
-        output_dim (int): ขนาดของเอาต์พุต
-        hidden_dims (List[int]): ขนาดของชั้นซ่อน
-        activation (str): ฟังก์ชันกระตุ้น ('relu', 'tanh', 'leaky_relu', 'elu', 'sigmoid')
-        output_activation (str, optional): ฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต
-        use_batch_norm (bool): ใช้ Batch Normalization หรือไม่
-        dropout_rate (float): อัตราการ dropout
-        layer_norm (bool): ใช้ Layer Normalization หรือไม่
-        init_weights (bool): กำหนดค่าเริ่มต้นของ weights หรือไม่
-        """
         super(MLPNetwork, self).__init__()
         
-        # เก็บพารามิเตอร์
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dims = hidden_dims
         
-        # กำหนดฟังก์ชันกระตุ้น
         self.activation_name = activation
         if activation == 'relu':
             self.activation = nn.ReLU()
@@ -59,7 +37,6 @@ class MLPNetwork(nn.Module):
         else:
             self.activation = nn.ReLU()
         
-        # กำหนดฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต
         self.output_activation_name = output_activation
         if output_activation == 'relu':
             self.output_activation = nn.ReLU()
@@ -72,7 +49,6 @@ class MLPNetwork(nn.Module):
         else:
             self.output_activation = None
         
-        # สร้างโครงสร้างของเครือข่าย
         self.layers = nn.ModuleList()
         prev_dim = input_dim
         
@@ -91,59 +67,38 @@ class MLPNetwork(nn.Module):
             
             prev_dim = hidden_dim
         
-        # ชั้นเอาต์พุต
         self.output_layer = nn.Linear(prev_dim, output_dim)
         
-        # กำหนดค่าเริ่มต้นของ weights
         if init_weights:
             self._init_weights()
     
     def _init_weights(self):
-        """
-        กำหนดค่าเริ่มต้นของ weights
-        """
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                # ใช้ Kaiming initialization สำหรับ ReLU
                 if self.activation_name in ['relu', 'leaky_relu', 'elu']:
                     nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-                # ใช้ Xavier initialization สำหรับ Tanh หรือ Sigmoid
                 elif self.activation_name in ['tanh', 'sigmoid']:
                     nn.init.xavier_normal_(m.weight)
                 else:
                     nn.init.xavier_normal_(m.weight)
                 
-                # กำหนดค่า bias เป็น 0
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        การส่งผ่านไปข้างหน้า (forward pass)
-        
-        Parameters:
-        x (torch.Tensor): อินพุต
-        
-        Returns:
-        torch.Tensor: เอาต์พุต
-        """
-        # ตรวจสอบ batch size และปรับขนาดอินพุตถ้าจำเป็น
         if x.dim() == 1:
-            x = x.unsqueeze(0)  # เพิ่มมิติ batch
+            x = x.unsqueeze(0)
         
-        # ส่งผ่านชั้นซ่อน
         for layer in self.layers:
             x = layer(x)
         
-        # ส่งผ่านชั้นเอาต์พุต
         x = self.output_layer(x)
         
-        # ใช้ฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต (ถ้ามี)
         if self.output_activation is not None:
             x = self.output_activation(x)
         
         return x
-
+    
 class CNNNetwork(nn.Module):
     """
     เครือข่ายประสาทเทียมแบบ Convolutional Neural Network (CNN)
