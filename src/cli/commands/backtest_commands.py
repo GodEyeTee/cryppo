@@ -49,7 +49,6 @@ def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, peri
     metrics = {}
     initial_equity = trades_df['portfolio_value'].iloc[0] if 'portfolio_value' in trades_df.columns else 10000.0
     
-    # Calculate basic metrics
     tracker = PerformanceTracker(initial_equity=initial_equity, periods_per_year=periods_per_year)
     for i in range(1, len(trades_df)):
         equity = trades_df['portfolio_value'].iloc[i]
@@ -60,8 +59,7 @@ def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, peri
         tracker.update(equity=equity, timestamp=timestamp, position=position)
     
     metrics.update(tracker.calculate_metrics(risk_free_rate=risk_free_rate))
-    
-    # Add time period metrics
+
     if raw_data is not None and 'timestamp' in trades_df.columns:
         first_date = pd.to_datetime(trades_df['timestamp'].iloc[0]).date()
         last_date = pd.to_datetime(trades_df['timestamp'].iloc[-1]).date()
@@ -83,7 +81,6 @@ def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, peri
             except Exception as e:
                 logger.warning(f"ไม่สามารถคำนวณผลตอบแทนของ Buy & Hold: {e}")
     
-    # Add trade analysis metrics
     if 'action' in trades_df.columns and 'position' in trades_df.columns:
         positions = trades_df['position'].values
         
@@ -143,7 +140,6 @@ def handle_run(args):
     
     backtest_config = config.extract_subconfig("backtest")
     
-    # Update config from command line args
     if args.window_size:
         config.set("data.window_size", args.window_size)
     
@@ -190,27 +186,23 @@ def handle_run(args):
         logger.error(f"ไม่สามารถโหลดข้อมูลจาก {args.input} ได้")
         return
 
-    # Filter data based on date range
     if backtest_config.get("start_date") or backtest_config.get("end_date"):
         data_manager.filter_data(
             start_date=backtest_config.get("start_date"),
             end_date=backtest_config.get("end_date")
         )
-    
-    # Load data stats
+
     stats_path = os.path.join(model_dir, "data_stats.json")
     if os.path.exists(stats_path):
         data_manager.load_stats(stats_path)
-    
-    # Initialize environment
+
     env = TradingEnv(
         data_manager=data_manager,
         config=config
     )
 
-    # Load model
     model_type = config.get("model.model_type")
-    input_size = 25  # Or correct value based on model
+    input_size = 25
     model = ModelFactory.create_model(
         model_type=model_type,
         input_size=input_size,
@@ -219,14 +211,12 @@ def handle_run(args):
     
     model.load(args.model)
 
-    # Create results directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_dir = os.path.join(args.output, f"backtest_{timestamp}")
     os.makedirs(result_dir, exist_ok=True)
 
     logger.info("กำลังทดสอบย้อนหลัง...")
     
-    # Run backtest
     observation = env.reset()
     done = False
     total_reward = 0
@@ -256,7 +246,6 @@ def handle_run(args):
     
     logger.info(f"ทดสอบย้อนหลังเสร็จสิ้น! Total Reward: {total_reward:.4f}, Final Portfolio: {portfolio_values[-1]:.2f}")
 
-    # Create DataFrame with results
     trades_df = pd.DataFrame({
         'timestamp': timestamps,
         'action': actions,
@@ -266,7 +255,6 @@ def handle_run(args):
         'done': dones
     })
     
-    # Save results
     trades_path = os.path.join(result_dir, "trades.csv")
     trades_df.to_csv(trades_path, index=False)
     
@@ -274,7 +262,6 @@ def handle_run(args):
     with open(config_path, 'w') as f:
         json.dump(config.to_dict(), f, indent=2)
     
-    # Calculate metrics
     metrics = calculate_trading_metrics(trades_df, data_manager.raw_data)
     
     # Save metrics
