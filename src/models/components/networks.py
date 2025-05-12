@@ -100,12 +100,6 @@ class MLPNetwork(nn.Module):
         return x
     
 class CNNNetwork(nn.Module):
-    """
-    เครือข่ายประสาทเทียมแบบ Convolutional Neural Network (CNN)
-    
-    สำหรับใช้กับข้อมูลอินพุตที่เป็นหลายมิติ เช่น รูปภาพหรือ time series ในการเรียนรู้แบบเสริมกำลัง
-    """
-    
     def __init__(
         self,
         input_shape: Tuple[int, ...],  # (channels, height, width) หรือ (channels, sequence_length)
@@ -119,22 +113,6 @@ class CNNNetwork(nn.Module):
         flatten_output: bool = True,
         pool_type: str = 'max'
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับเครือข่าย CNN
-        
-        Parameters:
-        input_shape (Tuple[int, ...]): รูปร่างของอินพุต (channels, height, width) หรือ (channels, sequence_length)
-        output_dim (int): ขนาดของเอาต์พุต
-        conv_layers (List[Dict[str, Any]], optional): รายละเอียดของชั้น convolutional, เช่น
-            [{'filters': 32, 'kernel_size': 3, 'stride': 1, 'padding': 1}, ...]
-        fc_layers (List[int]): ขนาดของชั้นซ่อนแบบ fully-connected
-        activation (str): ฟังก์ชันกระตุ้น ('relu', 'tanh', 'leaky_relu', 'elu')
-        output_activation (str, optional): ฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต
-        use_batch_norm (bool): ใช้ Batch Normalization หรือไม่
-        dropout_rate (float): อัตราการ dropout
-        flatten_output (bool): แปลงเอาต์พุตเป็นเวกเตอร์ 1 มิติหรือไม่
-        pool_type (str): ประเภทของการ pooling ('max', 'avg')
-        """
         super(CNNNetwork, self).__init__()
         
         # เก็บพารามิเตอร์
@@ -259,16 +237,6 @@ class CNNNetwork(nn.Module):
         self.output_layer = nn.Linear(in_features, output_dim)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        การส่งผ่านไปข้างหน้า (forward pass)
-        
-        Parameters:
-        x (torch.Tensor): อินพุต
-        
-        Returns:
-        torch.Tensor: เอาต์พุต
-        """
-        # ตรวจสอบรูปร่างของอินพุต
         if x.dim() == 3:
             x = x.unsqueeze(0)  # เพิ่มมิติ batch
         
@@ -294,12 +262,6 @@ class CNNNetwork(nn.Module):
         return x
 
 class LSTMNetwork(nn.Module):
-    """
-    เครือข่ายประสาทเทียมแบบ Long Short-Term Memory (LSTM)
-    
-    สำหรับใช้กับข้อมูลอินพุตที่เป็นลำดับ (sequence) เช่น ข้อมูลราคาย้อนหลัง
-    """
-    
     def __init__(
         self,
         input_dim: int,
@@ -312,20 +274,6 @@ class LSTMNetwork(nn.Module):
         fc_layers: List[int] = None,
         output_activation: Optional[str] = None
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับเครือข่าย LSTM
-        
-        Parameters:
-        input_dim (int): ขนาดของอินพุตในแต่ละ time step
-        hidden_dim (int): ขนาดของ hidden state
-        num_layers (int): จำนวนชั้นของ LSTM
-        output_dim (int): ขนาดของเอาต์พุต
-        bidirectional (bool): ใช้ LSTM แบบสองทิศทางหรือไม่
-        dropout (float): อัตราการ dropout
-        batch_first (bool): อินพุตมีรูปร่างเป็น (batch_size, seq_len, input_dim) หรือไม่
-        fc_layers (List[int], optional): ขนาดของชั้นซ่อนแบบ fully-connected หลังจาก LSTM
-        output_activation (str, optional): ฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต
-        """
         super(LSTMNetwork, self).__init__()
         
         # เก็บพารามิเตอร์
@@ -375,18 +323,6 @@ class LSTMNetwork(nn.Module):
             self.output_activation = None
     
     def forward(self, x: torch.Tensor, h0: Optional[torch.Tensor] = None, c0: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        การส่งผ่านไปข้างหน้า (forward pass)
-        
-        Parameters:
-        x (torch.Tensor): อินพุต (batch_size, seq_len, input_dim) หรือ (seq_len, batch_size, input_dim)
-        h0 (torch.Tensor, optional): hidden state เริ่มต้น
-        c0 (torch.Tensor, optional): cell state เริ่มต้น
-        
-        Returns:
-        torch.Tensor: เอาต์พุต
-        """
-        # ตรวจสอบรูปร่างของอินพุต
         if self.batch_first and x.dim() == 2:
             x = x.unsqueeze(0)  # เพิ่มมิติ batch
         elif not self.batch_first and x.dim() == 2:
@@ -423,12 +359,6 @@ class LSTMNetwork(nn.Module):
         return out
 
 class ActorNetwork(nn.Module):
-    """
-    เครือข่ายประสาทเทียมสำหรับ Actor ใน Actor-Critic algorithm
-    
-    สำหรับใช้ใน Actor-Critic, A2C, A3C, PPO, DDPG, และ SAC
-    """
-    
     def __init__(
         self,
         state_dim: int,
@@ -442,21 +372,6 @@ class ActorNetwork(nn.Module):
         log_std_min: float = -20,
         log_std_max: float = 2
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับเครือข่าย Actor
-        
-        Parameters:
-        state_dim (int): ขนาดของ state
-        action_dim (int): ขนาดของ action
-        continuous_action (bool): action เป็นแบบต่อเนื่องหรือไม่
-        hidden_dims (List[int]): ขนาดของชั้นซ่อน
-        activation (str): ฟังก์ชันกระตุ้น ('relu', 'tanh', 'leaky_relu')
-        output_activation (str, optional): ฟังก์ชันกระตุ้นสำหรับชั้นเอาต์พุต
-        use_batch_norm (bool): ใช้ Batch Normalization หรือไม่
-        dropout_rate (float): อัตราการ dropout
-        log_std_min (float): ค่าต่ำสุดของ log standard deviation (สำหรับ continuous action)
-        log_std_max (float): ค่าสูงสุดของ log standard deviation (สำหรับ continuous action)
-        """
         super(ActorNetwork, self).__init__()
         
         # เก็บพารามิเตอร์
@@ -492,16 +407,6 @@ class ActorNetwork(nn.Module):
             self.output_layer = nn.Linear(hidden_dims[-1], action_dim)
     
     def forward(self, state: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """
-        การส่งผ่านไปข้างหน้า (forward pass)
-        
-        Parameters:
-        state (torch.Tensor): state
-        
-        Returns:
-        torch.Tensor หรือ Tuple[torch.Tensor, torch.Tensor]: action probabilities หรือ (mean, log_std)
-        """
-        # ส่งผ่านเครือข่ายพื้นฐาน
         features = self.base_network(state)
         
         if self.continuous_action:
@@ -527,15 +432,6 @@ class ActorNetwork(nn.Module):
             return probs
     
     def sample(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        สุ่มการกระทำจาก policy
-        
-        Parameters:
-        state (torch.Tensor): state
-        
-        Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: (action, log_prob, entropy) หรือ (action, log_prob, mean)
-        """
         if self.continuous_action:
             # คำนวณ mean และ log_std ของการกระทำ
             mean, log_std = self.forward(state)
@@ -572,12 +468,6 @@ class ActorNetwork(nn.Module):
             return action, log_prob, entropy
 
 class CriticNetwork(nn.Module):
-    """
-    เครือข่ายประสาทเทียมสำหรับ Critic ใน Actor-Critic algorithm
-    
-    สำหรับใช้ใน Actor-Critic, A2C, A3C, PPO, DDPG, และ SAC
-    """
-    
     def __init__(
         self,
         state_dim: int,
@@ -587,17 +477,6 @@ class CriticNetwork(nn.Module):
         use_batch_norm: bool = False,
         dropout_rate: float = 0.0
     ):
-        """
-        กำหนดค่าเริ่มต้นสำหรับเครือข่าย Critic
-        
-        Parameters:
-        state_dim (int): ขนาดของ state
-        action_dim (int, optional): ขนาดของ action (สำหรับ Q-function)
-        hidden_dims (List[int]): ขนาดของชั้นซ่อน
-        activation (str): ฟังก์ชันกระตุ้น ('relu', 'tanh', 'leaky_relu')
-        use_batch_norm (bool): ใช้ Batch Normalization หรือไม่
-        dropout_rate (float): อัตราการ dropout
-        """
         super(CriticNetwork, self).__init__()
         
         # เก็บพารามิเตอร์
@@ -623,16 +502,6 @@ class CriticNetwork(nn.Module):
         )
     
     def forward(self, state: torch.Tensor, action: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        การส่งผ่านไปข้างหน้า (forward pass)
-        
-        Parameters:
-        state (torch.Tensor): state
-        action (torch.Tensor, optional): action (สำหรับ Q-function)
-        
-        Returns:
-        torch.Tensor: V(s) หรือ Q(s, a)
-        """
         if self.is_q_function:
             if action is None:
                 raise ValueError("ต้องระบุ action สำหรับ Q-function")
