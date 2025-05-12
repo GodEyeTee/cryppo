@@ -6,11 +6,9 @@ from src.utils.loggers import setup_logger
 from src.cli.commands import data_commands, train_commands, backtest_commands
 from src.utils.config_manager import get_config, set_cuda_env
 
-# ตั้งค่า logger
 logger = setup_logger('cli')
 
 def setup_global_args(parser):
-    """เพิ่มอาร์กิวเมนต์ทั่วไปสำหรับทุกคำสั่ง"""
     parser.add_argument('--verbose', '-v', action='count', default=0, 
                         help="เพิ่มระดับความละเอียดของ log (สามารถใช้ -vv หรือ -vvv ได้)")
     parser.add_argument('--quiet', '-q', action='store_true', 
@@ -21,8 +19,6 @@ def setup_global_args(parser):
                         help="กำหนดให้ใช้ CUDA")
 
 def handle_command(args):
-    """ดำเนินการตามคำสั่งที่กำหนด"""
-    # จัดการคำสั่งโดยใช้ dict แทน if-elif chains
     command_handlers = {
         'data': {
             'download': data_commands.handle_download,
@@ -60,17 +56,9 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Global arguments
     setup_global_args(parser)
-
-    # Subparsers for different commands
     subparsers = parser.add_subparsers(dest='command', help='คำสั่งที่ต้องการใช้')
-    
-    # ตั้งค่า parsers ต่างๆ (โค้ดส่วนนี้ยังคงเหมือนเดิม)
-    
     args = parser.parse_args()
-    
-    # ตั้งค่าระดับของ log
     if args.quiet:
         logging.getLogger().setLevel(logging.ERROR)
     elif args.verbose >= 3:
@@ -79,12 +67,10 @@ def main():
         logging.getLogger().setLevel(logging.INFO)
     elif args.verbose >= 1:
         logging.getLogger().setLevel(logging.WARNING)
-    
-    # ตั้งค่า CUDA ถ้าจำเป็น
+
     if hasattr(args, 'cuda') and args.cuda:
         set_cuda_env()
     
-    # ตรวจสอบคำสั่ง
     if args.command is None:
         parser.print_help()
         return
