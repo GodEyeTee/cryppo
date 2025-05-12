@@ -11,9 +11,6 @@ from src.utils.config_manager import get_config
 logger = logging.getLogger('cli.data')
 
 def setup_download_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งดาวน์โหลด
-    """
     parser.add_argument("--symbol", type=str, required=True, help="คู่สกุลเงิน (เช่น BTCUSDT)")
     parser.add_argument("--timeframes", type=str, required=True, help="ไทม์เฟรม (เช่น 1m,5m,1h คั่นด้วยเครื่องหมายจุลภาค)")
     parser.add_argument("--start", type=str, default=(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
@@ -27,9 +24,6 @@ def setup_download_parser(parser):
     parser.add_argument("--api-secret", type=str, default=None, help="Binance API secret")
 
 def setup_update_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งอัพเดต
-    """
     parser.add_argument("--symbol", type=str, required=True, help="คู่สกุลเงิน (เช่น BTCUSDT)")
     parser.add_argument("--timeframes", type=str, required=True, help="ไทม์เฟรม (เช่น 1m,5m,1h คั่นด้วยเครื่องหมายจุลภาค)")
     parser.add_argument("--data-dir", type=str, default="data/raw", help="ไดเรกทอรีที่เก็บข้อมูล")
@@ -39,9 +33,6 @@ def setup_update_parser(parser):
     parser.add_argument("--api-secret", type=str, default=None, help="Binance API secret")
 
 def setup_process_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งประมวลผล
-    """
     parser.add_argument("--input", type=str, required=True, help="ไฟล์หรือไดเรกทอรีนำเข้า")
     parser.add_argument("--output", type=str, required=True, help="ไฟล์หรือไดเรกทอรีส่งออก")
     parser.add_argument("--indicators", type=str, default=None,
@@ -55,9 +46,6 @@ def setup_process_parser(parser):
                       help="รูปแบบไฟล์ที่ต้องการประมวลผล (สำหรับโหมดไดเรกทอรี)")
 
 def setup_analyze_parser(parser):
-    """
-    ตั้งค่า parser สำหรับคำสั่งวิเคราะห์
-    """
     parser.add_argument("--input", type=str, required=True, help="ไฟล์ข้อมูลที่ต้องการวิเคราะห์")
     parser.add_argument("--output", type=str, default=None, help="ไฟล์สำหรับบันทึกผลการวิเคราะห์")
     parser.add_argument("--stats", action="store_true", help="แสดงสถิติของข้อมูล")
@@ -70,16 +58,10 @@ def setup_analyze_parser(parser):
                       help="รายการคอลัมน์ที่ต้องการวิเคราะห์ (คั่นด้วยเครื่องหมายจุลภาค)")
 
 def handle_download(args):
-    """
-    จัดการคำสั่งดาวน์โหลดข้อมูล
-    """
-    # สร้าง Binance Downloader
     downloader = BinanceDownloader(api_key=args.api_key, api_secret=args.api_secret)
     
-    # แยกไทม์เฟรมด้วยคอมม่า
     timeframes = [tf.strip() for tf in args.timeframes.split(',')]
     
-    # ดาวน์โหลดข้อมูล
     results = downloader.download_multiple_timeframes(
         symbol=args.symbol,
         timeframes=timeframes,
@@ -89,7 +71,6 @@ def handle_download(args):
         file_format=args.format
     )
     
-    # แสดงสรุปผล
     for timeframe, df in results.items():
         if df is not None and not df.empty:
             logger.info(f"ดาวน์โหลดข้อมูล {args.symbol} ไทม์เฟรม {timeframe} สำเร็จ: {len(df)} แท่งเทียน")
@@ -97,16 +78,10 @@ def handle_download(args):
             logger.warning(f"ไม่พบข้อมูลสำหรับ {args.symbol} ไทม์เฟรม {timeframe}")
 
 def handle_update(args):
-    """
-    จัดการคำสั่งอัพเดตข้อมูล
-    """
-    # สร้าง Binance Downloader
     downloader = BinanceDownloader(api_key=args.api_key, api_secret=args.api_secret)
     
-    # แยกไทม์เฟรมด้วยคอมม่า
     timeframes = [tf.strip() for tf in args.timeframes.split(',')]
     
-    # อัพเดตข้อมูล
     results = downloader.update_multiple_timeframes(
         symbol=args.symbol,
         timeframes=timeframes,
@@ -114,7 +89,6 @@ def handle_update(args):
         file_format=args.format
     )
     
-    # แสดงสรุปผล
     for timeframe, df in results.items():
         if df is not None and not df.empty:
             logger.info(f"อัพเดตข้อมูล {args.symbol} ไทม์เฟรม {timeframe} สำเร็จ: {len(df)} แท่งเทียน")
@@ -122,16 +96,9 @@ def handle_update(args):
             logger.warning(f"ไม่สามารถอัพเดตข้อมูลสำหรับ {args.symbol} ไทม์เฟรม {timeframe} ได้")
 
 def handle_process(args):
-    """
-    จัดการคำสั่งประมวลผลข้อมูล
-    """
-    # โหลดการตั้งค่า
     config = get_config()
-    
-    # สร้าง DataProcessor
     processor = DataProcessor(config)
     
-    # ตั้งค่าตามอาร์กิวเมนต์
     if args.no_log_transform:
         processor.use_log_transform = False
     
@@ -144,12 +111,10 @@ def handle_process(args):
     if args.window_size:
         processor.window_size = args.window_size
     
-    # แยกตัวชี้วัด
     indicators = None
     if args.indicators:
         indicators = [indicator.strip() for indicator in args.indicators.split(',')]
     
-    # ตรวจสอบว่าเป็นไฟล์หรือไดเรกทอรี
     path = Path(args.input)
     if path.is_file():
         # ประมวลผลไฟล์เดียว
@@ -159,7 +124,6 @@ def handle_process(args):
         else:
             logger.error(f"ไม่สามารถประมวลผลไฟล์ {args.input} ได้")
     elif path.is_dir():
-        # ประมวลผลทั้งไดเรกทอรี
         processed_files = processor.process_directory(
             str(path),
             args.output,
@@ -171,22 +135,16 @@ def handle_process(args):
         logger.error(f"ไม่พบไฟล์หรือไดเรกทอรี: {args.input}")
 
 def handle_analyze(args):
-    """
-    จัดการคำสั่งวิเคราะห์ข้อมูล
-    """
-    # ตรวจสอบไฟล์นำเข้า
     if not os.path.exists(args.input):
         logger.error(f"ไม่พบไฟล์: {args.input}")
         return
-    
-    # โหลดข้อมูล
+        
     data_manager = MarketDataManager(file_path=args.input)
     
     if not data_manager.data_loaded:
         logger.error(f"ไม่สามารถโหลดข้อมูลจาก {args.input} ได้")
         return
     
-    # แสดงข้อมูลพื้นฐาน
     info = data_manager.get_data_info()
     print("\nข้อมูลเกี่ยวกับชุดข้อมูล:")
     for key, value in info.items():
@@ -201,21 +159,18 @@ def handle_analyze(args):
     
     # แสดงสถิติ
     if args.stats:
-        # วิเคราะห์ราคา
         price_stats = data_manager.get_timeseries_stats('close')
         print("\nสถิติของราคา:")
         for key, value in price_stats.items():
             if key != 'autocorrelation' and key != 'adf_test':
                 print(f"  {key}: {value}")
         
-        # วิเคราะห์ปริมาณการซื้อขาย
         volume_stats = data_manager.get_timeseries_stats('volume')
         print("\nสถิติของปริมาณการซื้อขาย:")
         for key, value in volume_stats.items():
             if key != 'autocorrelation' and key != 'adf_test':
                 print(f"  {key}: {value}")
     
-    # แสดงเมทริกซ์สหสัมพันธ์
     if args.correlation:
         # แยกคอลัมน์
         columns = None
