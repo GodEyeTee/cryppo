@@ -9,11 +9,6 @@ from src.models.dqn.dueling_dqn import DuelingDQN
 logger = logging.getLogger('models.factory')
 
 class ModelFactory:
-    """
-    Factory สำหรับสร้างโมเดลต่างๆ
-    """
-    
-    # ทะเบียนโมเดล
     _models = {
         'dqn': DQN,
         'double_dqn': DoubleDQN,
@@ -22,63 +17,30 @@ class ModelFactory:
     
     @classmethod
     def register_model(cls, name: str, model_class: Type[BaseModel]):
-        """
-        ลงทะเบียนโมเดลใหม่
-        
-        Parameters:
-        name (str): ชื่อของโมเดล
-        model_class (Type[BaseModel]): คลาสของโมเดล
-        """
         cls._models[name.lower()] = model_class
-        logger.info(f"ลงทะเบียนโมเดล {name}")
+        logger.info(f"Registered model {name}")
     
     @classmethod
     def get_model_class(cls, model_type: str) -> Optional[Type[BaseModel]]:
-        """
-        ดึงคลาสของโมเดลจากชื่อ
-        
-        Parameters:
-        model_type (str): ประเภทของโมเดล
-        
-        Returns:
-        Type[BaseModel]: คลาสของโมเดล หรือ None หากไม่พบ
-        """
         model_type = model_type.lower()
         
         if model_type in cls._models:
             return cls._models[model_type]
         else:
-            logger.error(f"ไม่พบโมเดลประเภท: {model_type}")
+            logger.error(f"Unknown model type: {model_type}")
             return None
     
     @classmethod
     def create_model(cls, model_type: str, input_size: int, config: Any) -> Optional[BaseModel]:
-        """
-        สร้างโมเดลจากชื่อ
-        
-        Parameters:
-        model_type (str): ประเภทของโมเดล
-        input_size (int): ขนาดของ input
-        config (Any): การตั้งค่าของโมเดล
-        
-        Returns:
-        BaseModel: โมเดลที่สร้างแล้ว หรือ None หากไม่สามารถสร้างได้
-        """
         model_class = cls.get_model_class(model_type)
         
         if model_class:
             try:
-                # ตรวจสอบข้อมูลเพื่อการแก้จุดบกพร่อง
                 print(f"Creating model with input_size: {input_size}")
                 
-                # กำหนดค่า action_dim และ input_size ที่ถูกต้อง
-                action_dim = 4  # มาจาก Trading_env.ACTIONS ที่มี 4 actions (NONE, LONG, SHORT, EXIT)
+                action_dim = 4  # From Trading_env.ACTIONS (NONE, LONG, SHORT, EXIT)
+                input_size = 25  # Adjust input size to match data
                 
-                # อาจจำเป็นต้องปรับ input_size ให้ตรงกับข้อมูล
-                # จากข้อผิดพลาด input_size ควรเป็น 25 ไม่ใช่ 26
-                input_size = 25
-                
-                # ตรวจสอบว่าโมเดลเป็น DQN หรือ subclass ของ DQN หรือไม่
                 if issubclass(model_class, DQN):
                     model = model_class(
                         input_size=input_size, 
@@ -88,10 +50,10 @@ class ModelFactory:
                 else:
                     model = model_class(input_size=input_size, config=config)
                 
-                logger.info(f"สร้างโมเดล {model_type} สำเร็จด้วย input_size={input_size}, action_dim={action_dim}")
+                logger.info(f"Created model {model_type} with input_size={input_size}, action_dim={action_dim}")
                 return model
             except Exception as e:
-                logger.error(f"เกิดข้อผิดพลาดในการสร้างโมเดล {model_type}: {e}")
+                logger.error(f"Error creating model {model_type}: {e}")
                 import traceback
                 traceback.print_exc()
                 return None
@@ -100,10 +62,4 @@ class ModelFactory:
     
     @classmethod
     def list_available_models(cls) -> Dict[str, Type[BaseModel]]:
-        """
-        แสดงรายการโมเดลที่มีอยู่
-        
-        Returns:
-        Dict[str, Type[BaseModel]]: รายการโมเดลที่มีอยู่
-        """
         return cls._models
