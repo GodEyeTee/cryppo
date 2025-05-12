@@ -15,7 +15,6 @@ from src.environment.renderers.renderer import Renderer
 from src.data.managers.data_manager import MarketDataManager
 from src.utils.config import get_config
 
-# ตั้งค่า logger
 logger = logging.getLogger(__name__)
 
 class TradingEnv(BaseEnv):
@@ -41,8 +40,8 @@ class TradingEnv(BaseEnv):
         self.transaction_fee = transaction_fee or env_cfg.get("fee_rate", 0.0025)
         self.use_position_info = use_position_info
         self.normalize_obs = normalize_obs
+        self.history = []
 
-        # Data manager
         if file_path:
             self.data_manager = MarketDataManager(
                 file_path=file_path,
@@ -56,21 +55,16 @@ class TradingEnv(BaseEnv):
             self.data_manager = None
             logger.warning("No data source provided; load_data() must be called before use.")
 
-        # Simulator and renderer
-        self.simulator = TradingSimulator(self.initial_balance, self.transaction_fee, self.config)
-        self.renderer = Renderer(render_mode or env_cfg.get("render_mode"), self.config)
-        self.history: list = []
-
-        # Spaces
+        self.simulator = TradingSimulator(self.initial_balance, self.transaction_fee, config=self.config)
+        self.renderer = Renderer(render_mode or env_cfg.get("render_mode"), config=self.config)
+        
         action_space = spaces.Discrete(len(self.ACTIONS))
         obs_space = spaces.Box(-np.inf, np.inf, shape=(self.window_size, self._feature_dim()), dtype=np.float32)
         super().__init__(obs_space, action_space, render_mode, self.config)
 
-        # Reward
-        self.reward_function = self._get_reward_fn(reward_fn)
+        self.reward_function = self._get_reward_function(reward_fn)
     
     def _feature_dim(self):
-        # Count features excluding timestamp
         cols = self.data_manager.data.columns.tolist()
         dim = len(cols) - (1 if 'timestamp' in cols else 0)
         return dim + (3 if self.use_position_info else 0)
@@ -84,36 +78,25 @@ class TradingEnv(BaseEnv):
             raise ValueError(f"Failed to load data from {file_path}")
     
     def _setup_observation_space(self) -> None:
-        """
-        กำหนดพื้นที่สังเกตการณ์ (observation space) ตามข้อมูลที่โหลด
-        """
         if self.data_manager.data is None:
-            logger.error("ไม่สามารถกำหนด observation_space เนื่องจากยังไม่ได้โหลดข้อมูล")
+            logger.error("Cannot set observation_space because data is not loaded")
             return
         
-        # จำนวนคุณลักษณะ (features) ในข้อมูล
         num_features = self.data_manager.data.shape[1]
-        
-        # ลบคอลัมน์ timestamp ถ้ามี
         if 'timestamp' in self.data_manager.data.columns:
             num_features -= 1
         
-        # เพิ่มคุณลักษณะสำหรับข้อมูลตำแหน่ง
         if self.use_position_info:
-            num_features += 3  # position_type, units, profit
+            num_features += 3
         
-        # เก็บ obs_shape
         self.obs_shape = (self.window_size, num_features)
-        
-        # กำหนด observation_space
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
             shape=self.obs_shape,
             dtype=np.float32
         )
-        
-        logger.info(f"กำหนด observation_space: {self.observation_space}")
+        logger.info(f"Set observation_space: {self.observation_space}")
     
     def reset(self, seed=None, options=None):
         state, info = super().reset(seed, options)
@@ -129,39 +112,24 @@ class TradingEnv(BaseEnv):
         self.simulator.reset(self.initial_balance)
         self.history.clear()
         obs = self._get_observation()
-        info.update({ 'step': self.current_step, 'price': self.prices[self.current_step] })
+        info.update({'step': self.current_step, 'price': self.prices[self.current_step]})
         return obs, info
     
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """
-        ดำเนินการหนึ่งขั้นตอนในสภาพแวดล้อมตามการกระทำที่กำหนด
-        
-        Parameters:
-        action (int): การกระทำที่เลือก (0=NONE, 1=LONG, 2=SHORT, 3=EXIT)
-        
-        Returns:
-        Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]: สถานะใหม่, รางวัล, done, truncated, ข้อมูลเพิ่มเติม
-        """
-        # ตรวจสอบว่าการกระทำถูกต้องหรือไม่
         if not self.action_space.contains(action):
-            logger.warning(f"การกระทำไม่ถูกต้อง: {action}, ใช้ NONE แทน")
+            logger.warning(f"Invalid action: {action}, using NONE instead")
             action = self.ACTIONS['NONE']
         
-        # ตรวจสอบว่า episode จบแล้วหรือไม่
         if self.done:
             next_obs = self._get_observation()
             return next_obs, 0.0, self.done, False, self.info
         
-        # ดำเนินการตามการกระทำและคำนวณผลลัพธ์
         next_state, reward, done, info = self._process_action(action)
-        
-        # อัพเดตตัวแปรต่างๆ
         self.state = next_state
         self.done = done
         self.info = info
         self.total_rewards += reward
         
-        # เพิ่มข้อมูลลงในประวัติ
         self.history.append({
             'step': self.current_step,
             'price': self.prices[self.current_step] if self.current_step < len(self.prices) else 0,
@@ -174,49 +142,51 @@ class TradingEnv(BaseEnv):
             'profit': self.simulator.profit
         })
         
-        # ตรวจสอบ truncated (จำกัดจำนวนขั้นตอน)
-        truncated = False
-        if self.max_episode_steps is not None and self.steps >= self.max_episode_steps:
-            truncated = True
+        truncated = self.max_steps and self.steps >= self.max_steps
         
-        # แสดงผลถ้าจำเป็น
         if self.render_mode != "none":
             self.render()
         
         return next_state, reward, done, truncated, info
     
     def _process_action(self, action: int):
-        # Validate action
         if not self.action_space.contains(action):
-            logger.warning(f"Invalid action {action}, defaulting to NONE.")
             action = self.ACTIONS['NONE']
-        # Execute trade
+            
         price = self.prices[self.current_step]
         prev_price = self.prices[self.current_step - 1] if self.current_step > 0 else price
+        
         if action == self.ACTIONS['LONG']:
             self.simulator.open_long_position(price)
         elif action == self.ACTIONS['SHORT']:
             self.simulator.open_short_position(price)
         elif action == self.ACTIONS['EXIT']:
             self.simulator.close_position(price)
+            
         self.simulator.update(price)
         self.current_step += 1
         done = self.current_step >= len(self.prices) - 1
+        
         if done and self.simulator.has_position():
             self.simulator.close_position(price)
+            
         reward = self.reward_function(self.simulator, price, prev_price)
         obs = self._get_observation()
         info = self._make_info(price)
         self.history.append(info.copy())
+        
         return obs, reward, done, info
     
     def _get_observation(self):
         df = self.data_manager.data
         start = max(0, self.current_step - self.window_size + 1)
         window = df.iloc[start:self.current_step+1].copy()
+        
         if 'timestamp' in window:
             window.drop('timestamp', axis=1, inplace=True)
+            
         arr = window.reindex(list(range(self.current_step - self.window_size + 1, self.current_step+1))).fillna(0).to_numpy()
+        
         if self.use_position_info:
             pos = np.full((self.window_size, 3), [
                 1 if self.simulator.position_type=='long' else -1 if self.simulator.position_type=='short' else 0,
@@ -224,6 +194,7 @@ class TradingEnv(BaseEnv):
                 self.simulator.profit
             ])
             arr = np.hstack([arr, pos])
+            
         return arr.astype(np.float32)
     
     def _make_info(self, price):
@@ -239,29 +210,12 @@ class TradingEnv(BaseEnv):
         }
     
     def _get_initial_state(self, options: Dict[str, Any] = None) -> np.ndarray:
-        """
-        เตรียมสถานะเริ่มต้นของสภาพแวดล้อม
-        
-        Parameters:
-        options (Dict[str, Any], optional): ตัวเลือกเพิ่มเติมสำหรับการรีเซ็ต
-        
-        Returns:
-        np.ndarray: สถานะเริ่มต้น
-        """
         return self._get_observation()
     
     def _render_frame(self) -> Optional[Union[np.ndarray, str]]:
-        """
-        สร้างเฟรมสำหรับการแสดงผล
-        
-        Returns:
-        np.ndarray or str or None: เฟรมสำหรับการแสดงผล
-        """
-        # ตรวจสอบว่ามีข้อมูลหรือไม่
         if self.data_manager is None or self.current_step >= len(self.prices):
             return None
         
-        # เตรียมข้อมูลสำหรับการแสดงผล
         render_data = {
             'step': self.current_step,
             'price': self.prices[self.current_step - 1] if self.current_step > 0 else 0,
@@ -275,13 +229,11 @@ class TradingEnv(BaseEnv):
             'history': self.history
         }
         
-        # แสดงผลด้วย renderer
         return self.renderer.render(render_data)
     
     def render(self):
-        if self.render_mode=='none': return None
-        data = self.history
-        return self.renderer.render({ 'history': data })
+        if self.render_mode == 'none': return None
+        return self.renderer.render({'history': self.history})
     
     def close(self):
         super().close()
@@ -299,66 +251,25 @@ class TradingEnv(BaseEnv):
         }
         return funcs.get(rt, funcs['profit'])
     
-    def _profit_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลตามกำไร/ขาดทุน
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
-        return simulator.profit
-    
     def _return_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลตามผลตอบแทน
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
         if simulator.position_type == 'none':
             return 0.0
         
-        # คำนวณผลตอบแทนจากการเปลี่ยนแปลงของราคา
         price_change = (current_price - prev_price) / prev_price
         
-        # ปรับตามประเภทของตำแหน่ง
         if simulator.position_type == 'long':
-            return price_change * 100  # เปอร์เซ็นต์
+            return price_change * 100
         elif simulator.position_type == 'short':
-            return -price_change * 100  # เปอร์เซ็นต์
+            return -price_change * 100
         
         return 0.0
     
     def _sharpe_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลตาม Sharpe Ratio
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
-        # คำนวณผลตอบแทน
         returns = self._return_reward(simulator, current_price, prev_price)
         
-        # ถ้ายังไม่มีข้อมูลพอสำหรับคำนวณ Sharpe Ratio
         if len(self.history) < 10:
             return returns
         
-        # คำนวณ Sharpe Ratio
         returns_history = [h['reward'] for h in self.history[-10:]]
         returns_history.append(returns)
         
@@ -368,81 +279,41 @@ class TradingEnv(BaseEnv):
         if std_return == 0:
             return 0.0
         
-        # Sharpe Ratio = (Mean Return - Risk Free Rate) / Standard Deviation
-        # Risk Free Rate = 0 (สมมติ)
-        sharpe_ratio = mean_return / std_return
-        
-        return sharpe_ratio
+        return mean_return / std_return
     
     def _sortino_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลตาม Sortino Ratio
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
-        # คำนวณผลตอบแทน
         returns = self._return_reward(simulator, current_price, prev_price)
         
-        # ถ้ายังไม่มีข้อมูลพอสำหรับคำนวณ Sortino Ratio
         if len(self.history) < 10:
             return returns
         
-        # คำนวณ Sortino Ratio
         returns_history = [h['reward'] for h in self.history[-10:]]
         returns_history.append(returns)
         
         mean_return = np.mean(returns_history)
-        
-        # เฉพาะผลตอบแทนที่ติดลบ
         negative_returns = [r for r in returns_history if r < 0]
         
         if not negative_returns:
-            return mean_return  # ไม่มีผลตอบแทนติดลบ
+            return mean_return
         
-        # Downside Deviation
         downside_deviation = np.sqrt(np.mean(np.square(negative_returns)))
         
         if downside_deviation == 0:
             return 0.0
         
-        # Sortino Ratio = (Mean Return - Risk Free Rate) / Downside Deviation
-        # Risk Free Rate = 0 (สมมติ)
-        sortino_ratio = mean_return / downside_deviation
-        
-        return sortino_ratio
+        return mean_return / downside_deviation
     
     def _calmar_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลตาม Calmar Ratio
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
-        # คำนวณผลตอบแทน
         returns = self._return_reward(simulator, current_price, prev_price)
         
-        # ถ้ายังไม่มีข้อมูลพอสำหรับคำนวณ Calmar Ratio
         if len(self.history) < 10:
             return returns
         
-        # คำนวณผลตอบแทนเฉลี่ยรายปี (สมมติว่าเป็นรายวัน)
         returns_history = [h['reward'] for h in self.history[-10:]]
         returns_history.append(returns)
         
-        mean_return = np.mean(returns_history) * 252  # Annualized
+        mean_return = np.mean(returns_history) * 252
         
-        # คำนวณ Maximum Drawdown
         equity_curve = [h['balance'] + h['profit'] for h in self.history]
         equity_curve.append(simulator.balance + simulator.profit)
         
@@ -458,45 +329,17 @@ class TradingEnv(BaseEnv):
         if max_drawdown == 0:
             return mean_return
         
-        # Calmar Ratio = Annualized Return / Maximum Drawdown
-        calmar_ratio = mean_return / (max_drawdown * 100)  # แปลง max_drawdown เป็นเปอร์เซ็นต์
-        
-        return calmar_ratio
+        return mean_return / (max_drawdown * 100)
     
     def _custom_reward(self, simulator: TradingSimulator, current_price: float, prev_price: float) -> float:
-        """
-        คำนวณรางวัลแบบกำหนดเอง
-        
-        Parameters:
-        simulator (TradingSimulator): อินสแตนซ์ของ TradingSimulator
-        current_price (float): ราคาปัจจุบัน
-        prev_price (float): ราคาก่อนหน้า
-        
-        Returns:
-        float: รางวัล
-        """
-        # ผสมผสานระหว่างผลตอบแทนและ Sharpe Ratio
-        profit_reward = self._profit_reward(simulator, current_price, prev_price)
+        profit_reward = simulator.profit
         sharpe_reward = self._sharpe_reward(simulator, current_price, prev_price)
-        
-        # ถ่วงน้ำหนัก 70% ผลตอบแทน, 30% Sharpe Ratio
         return 0.7 * profit_reward + 0.3 * sharpe_reward
     
     def save_history(self, file_path: str) -> bool:
-        """
-        บันทึกประวัติการเทรดไปยังไฟล์
-        
-        Parameters:
-        file_path (str): พาธไปยังไฟล์ที่จะบันทึก
-        
-        Returns:
-        bool: True ถ้าบันทึกสำเร็จ, False ถ้าไม่สำเร็จ
-        """
         try:
-            # สร้างโฟลเดอร์หากไม่มีอยู่
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             
-            # แปลงวันที่เป็นสตริง
             history = []
             for item in self.history:
                 item_copy = item.copy()
@@ -505,71 +348,45 @@ class TradingEnv(BaseEnv):
                         item_copy['date'] = item_copy['date'].strftime('%Y-%m-%d %H:%M:%S')
                 history.append(item_copy)
             
-            # บันทึกเป็น JSON
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(history, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"บันทึกประวัติการเทรดที่: {file_path}")
+            logger.info(f"Saved trading history to: {file_path}")
             return True
         
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการบันทึกประวัติการเทรด: {e}")
+            logger.error(f"Error saving trading history: {e}")
             return False
     
     def load_history(self, file_path: str) -> bool:
-        """
-        โหลดประวัติการเทรดจากไฟล์
-        
-        Parameters:
-        file_path (str): พาธไปยังไฟล์ที่จะโหลด
-        
-        Returns:
-        bool: True ถ้าโหลดสำเร็จ, False ถ้าไม่สำเร็จ
-        """
         try:
-            # ตรวจสอบว่าไฟล์มีอยู่หรือไม่
             if not os.path.exists(file_path):
-                logger.error(f"ไม่พบไฟล์: {file_path}")
+                logger.error(f"File not found: {file_path}")
                 return False
             
-            # โหลด JSON
             with open(file_path, 'r', encoding='utf-8') as f:
                 history = json.load(f)
             
-            # แปลงวันที่เป็น datetime
             for item in history:
                 if 'date' in item and item['date'] is not None:
                     if isinstance(item['date'], str):
                         item['date'] = pd.to_datetime(item['date'])
             
             self.history = history
-            
-            logger.info(f"โหลดประวัติการเทรดจาก: {file_path}")
+            logger.info(f"Loaded trading history from: {file_path}")
             return True
         
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการโหลดประวัติการเทรด: {e}")
+            logger.error(f"Error loading trading history: {e}")
             return False
     
     def plot_performance(self, output_file: Optional[str] = None, show: bool = True) -> Optional[plt.Figure]:
-        """
-        สร้างกราฟแสดงประสิทธิภาพการเทรด
-        
-        Parameters:
-        output_file (str, optional): พาธไปยังไฟล์ที่จะบันทึกกราฟ
-        show (bool): แสดงกราฟหรือไม่
-        
-        Returns:
-        plt.Figure or None: กราฟหรือ None ถ้าไม่มีข้อมูล
-        """
         if not self.history:
-            logger.warning("ไม่มีประวัติการเทรด")
+            logger.warning("No trading history")
             return None
         
-        # สร้างกราฟด้วย matplotlib
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1, 1]})
         
-        # ข้อมูลสำหรับกราฟ
         steps = [h['step'] for h in self.history]
         dates = [h['date'] for h in self.history]
         prices = [h['price'] for h in self.history]
@@ -578,48 +395,38 @@ class TradingEnv(BaseEnv):
         actions = [h['action'] for h in self.history]
         rewards = [h['reward'] for h in self.history]
         
-        # กราฟราคา
         ax1.plot(steps, prices, label='Price', color='blue')
         ax1.set_ylabel('Price')
         ax1.set_title('Trading Performance')
         ax1.grid(True)
         
-        # กราฟเงินทุน
         ax1.plot(steps, balances, label='Equity', color='green', alpha=0.7)
         ax1.legend()
         
-        # ตำแหน่ง Long และ Short
         for i, pos in enumerate(positions):
             if pos == 'long':
                 ax1.scatter(steps[i], prices[i], marker='^', color='green', s=100)
             elif pos == 'short':
                 ax1.scatter(steps[i], prices[i], marker='v', color='red', s=100)
         
-        # กราฟการกระทำ
         ax2.bar(steps, actions, color='purple', alpha=0.7)
         ax2.set_ylabel('Action')
         ax2.set_yticks(list(self.ACTIONS.values()))
         ax2.set_yticklabels(list(self.ACTIONS.keys()))
         ax2.grid(True)
         
-        # กราฟรางวัล
         ax3.bar(steps, rewards, color='orange', alpha=0.7)
         ax3.set_ylabel('Reward')
         ax3.set_xlabel('Step')
         ax3.grid(True)
         
-        # ปรับระยะห่างระหว่างกราฟ
         plt.tight_layout()
         
-        # บันทึกกราฟ
         if output_file:
-            # สร้างโฟลเดอร์หากไม่มีอยู่
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            
             plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            logger.info(f"บันทึกกราฟที่: {output_file}")
+            logger.info(f"Saved chart to: {output_file}")
         
-        # แสดงกราฟ
         if show:
             plt.show()
         else:
