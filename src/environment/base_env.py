@@ -2,7 +2,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 import logging
-from typing import Any, Dict, Optional, Tuple, Union, Callable
+from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 import pandas as pd
 import os
@@ -14,7 +14,6 @@ from src.environment.simulators.trading_simulator import TradingSimulator
 from src.environment.renderers.renderer import Renderer
 from src.data.managers.data_manager import MarketDataManager
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 class BaseEnv(gym.Env):
@@ -27,23 +26,19 @@ class BaseEnv(gym.Env):
         render_mode: Optional[str] = None,
         config=None,
     ):
-        # Load config
         self.config = config or get_config()
         env_cfg = self.config.extract_subconfig("environment")
 
-        # Setup spaces and range
         self.observation_space = observation_space
         self.action_space = action_space
         self.reward_range = (-float('inf'), float('inf'))
 
-        # Render mode
         render_mode = render_mode or env_cfg.get("render_mode", "none")
         if render_mode not in self.metadata['render_modes']:
             logger.warning(f"Invalid render_mode '{render_mode}', defaulting to 'none'.")
             render_mode = 'none'
         self.render_mode = render_mode
 
-        # Episode state
         self.state = None
         self.done = False
         self.info = {}
@@ -52,15 +47,12 @@ class BaseEnv(gym.Env):
         self.total_rewards = 0.0
         self.max_steps = env_cfg.get("max_episode_steps")
 
-        # RNG
         self.np_random, _ = gym.utils.seeding.np_random(self.config.get("general.random_seed", None))
         logger.info(f"Initialized BaseEnv (render={self.render_mode})")
     
     def seed(self, seed: Optional[int] = None):
-
         if seed is None:
             seed = self.config.get("general.random_seed", None)
-            
         self.np_random, seed = gym.utils.seeding.np_random(seed)
         return [seed]
     
@@ -84,7 +76,7 @@ class BaseEnv(gym.Env):
         next_state, reward, done, info = self._process_action(action)
         self.state, self.done = next_state, done
         self.total_rewards += reward
-        info.update({ 'steps': self.steps, 'episode': self.episode, 'total_rewards': self.total_rewards })
+        info.update({'steps': self.steps, 'episode': self.episode, 'total_rewards': self.total_rewards})
         return next_state, reward, done, truncated, info
     
     def render(self):
@@ -103,12 +95,6 @@ class BaseEnv(gym.Env):
         raise NotImplementedError
     
     def get_state_dict(self) -> Dict[str, Any]:
-        """
-        ดึงข้อมูลสถานะของสภาพแวดล้อมในรูปแบบ dict
-        
-        Returns:
-        Dict[str, Any]: ข้อมูลสถานะของสภาพแวดล้อม
-        """
         return {
             'state': self.state,
             'done': self.done,
@@ -119,12 +105,6 @@ class BaseEnv(gym.Env):
         }
     
     def set_state_dict(self, state_dict: Dict[str, Any]) -> None:
-        """
-        ตั้งค่าสถานะของสภาพแวดล้อมจาก dict
-        
-        Parameters:
-        state_dict (Dict[str, Any]): ข้อมูลสถานะของสภาพแวดล้อม
-        """
         self.state = state_dict.get('state', self.state)
         self.done = state_dict.get('done', self.done)
         self.info = state_dict.get('info', self.info)
@@ -133,10 +113,4 @@ class BaseEnv(gym.Env):
         self.total_rewards = state_dict.get('total_rewards', self.total_rewards)
     
     def __str__(self) -> str:
-        """
-        แปลงสภาพแวดล้อมเป็นสตริง
-        
-        Returns:
-        str: ข้อมูลสภาพแวดล้อมในรูปแบบสตริง
-        """
         return f"{self.__class__.__name__}(obs_space={self.observation_space}, action_space={self.action_space}, render_mode={self.render_mode})"
