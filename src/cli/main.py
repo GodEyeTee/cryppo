@@ -1,22 +1,16 @@
 import argparse
 import logging
-from pathlib import Path
-
-from src.utils.loggers import setup_logger
 from src.cli.commands import data_commands, train_commands, backtest_commands
+from src.utils.loggers import setup_logger
 from src.utils.config_manager import get_config, set_cuda_env
 
 logger = setup_logger('cli')
 
 def setup_global_args(parser):
-    parser.add_argument('--verbose', '-v', action='count', default=0, 
-                        help="เพิ่มระดับความละเอียดของ log (สามารถใช้ -vv หรือ -vvv ได้)")
-    parser.add_argument('--quiet', '-q', action='store_true', 
-                        help="ลดการแสดงผลให้เหลือเฉพาะข้อผิดพลาดเท่านั้น")
-    parser.add_argument('--config', '-c', type=str, default=None,
-                        help="ไฟล์การตั้งค่าที่ต้องการใช้")
-    parser.add_argument('--cuda', action='store_true', 
-                        help="กำหนดให้ใช้ CUDA")
+    parser.add_argument('--verbose', '-v', action='count', default=0)
+    parser.add_argument('--quiet', '-q', action='store_true')
+    parser.add_argument('--config', '-c', type=str, default=None)
+    parser.add_argument('--cuda', action='store_true')
 
 def handle_command(args):
     command_handlers = {
@@ -45,20 +39,19 @@ def handle_command(args):
         logger.error(f"ไม่รู้จักคำสั่งย่อย: {sub_command} สำหรับคำสั่ง {args.command}")
         return
     
-    # เรียกฟังก์ชันที่จะจัดการคำสั่ง
     handler = command_handlers[args.command][sub_command]
     handler(args)
 
 def main():
-    """ฟังก์ชันหลักของ Command Line Interface"""
     parser = argparse.ArgumentParser(
         description="CRYPPO - CRYPtocurrency Position Optimization",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
     setup_global_args(parser)
-    subparsers = parser.add_subparsers(dest='command', help='คำสั่งที่ต้องการใช้')
+    parser.add_subparsers(dest='command', help='คำสั่งที่ต้องการใช้')
     args = parser.parse_args()
+    
     if args.quiet:
         logging.getLogger().setLevel(logging.ERROR)
     elif args.verbose >= 3:
