@@ -93,10 +93,7 @@ python -m src.cli.main data download --symbol BTCUSDT --timeframe 1m --start 202
 ### ประมวลผลข้อมูล
 
 ```bash
-python -m src.cli.main data process \
-  --input data/raw/BTCUSDT/1m \
-  --output data/processed/BTCUSDT/1m \
-  --file-pattern "*.parquet"
+python -m src.cli.main data process --input data/raw/BTCUSDT/1m --output data/processed/BTCUSDT/1m --file-pattern "*.parquet"
 ```
 
 ---
