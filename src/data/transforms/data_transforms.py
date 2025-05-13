@@ -20,10 +20,8 @@ def log_transform(data: np.ndarray, is_volume_col: Optional[np.ndarray] = None) 
         clean_data[np.isnan(clean_data)] = 1e-8
         
         if is_volume_col[col]:
-            # สำหรับปริมาณ ใช้ log1p
             log_data[:, col] = np.log1p(clean_data)
         else:
-            # สำหรับราคา ใช้ log
             log_data[:, col] = np.log(clean_data)
     
     return log_data
