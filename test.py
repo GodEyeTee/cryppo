@@ -47,6 +47,7 @@ FEE_RATE = 0.0025  # 0.25%
 STOP_LOSS = 0.05   # 5%
 TAKE_PROFIT = 0.005  # 0.5%
 LIQUIDATION_THRESHOLD = 0.8  # 80% of margin
+N_EPISODES = 100
 
 # DQN Hyperparameters
 LEARNING_RATE = 1e-4
