@@ -1,0 +1,28 @@
+{
+  "test_results": {
+    "final_return": -100.0,
+    "sharpe_ratio": -3.8657677652038154,
+    "max_drawdown": 100.0,
+    "total_trades": 1,
+    "win_rate": 0.0
+  },
+  "training_results": {
+    "final_profit": -100.0,
+    "final_trades": 7,
+    "final_sharpe": -3.751811653360855
+  },
+  "comparison": {
+    "buy_hold_return": 27.565658132810867,
+    "random_return": -48.453092353963235,
+    "outperformance_bh": -127.56565813281087,
+    "outperformance_random": -51.546907646036765
+  },
+  "model_config": {
+    "architecture": "Dueling DQN with Noisy Networks",
+    "replay": "Prioritized Experience Replay",
+    "features": 19,
+    "hidden_dim": 512,
+    "learning_rate": 5e-05
+  },
+  "timestamp": "2025-06-10T13:50:27.341037"
+}
