@@ -1,28 +1,28 @@
 {
   "test_results": {
-    "final_return": -100.0,
-    "sharpe_ratio": -0.7263844137020519,
-    "max_drawdown": 100.0,
-    "total_trades": 15,
-    "win_rate": 66.66666666666666
+    "final_return": -0.579462451254642,
+    "sharpe_ratio": -0.5144788773596943,
+    "max_drawdown": 0.7466296867361072,
+    "total_trades": 83,
+    "win_rate": 44.57831325301205
   },
   "training_results": {
-    "final_profit": -100.0,
-    "final_trades": 40,
-    "final_sharpe": -3.7445350150752605
+    "final_profit": -0.7273459539273275,
+    "final_trades": 100,
+    "final_sharpe": 0
   },
   "comparison": {
-    "buy_hold_return": 28.91767569973549,
-    "random_return": -36.2968590043149,
-    "outperformance_bh": -128.9176756997355,
-    "outperformance_random": -63.7031409956851
+    "buy_hold_return": 31.529583653489745,
+    "random_return": -38.134975043425314,
+    "outperformance_bh": -32.10904610474439,
+    "outperformance_random": 37.55551259217067
   },
   "model_config": {
     "architecture": "Dueling DQN with Noisy Networks",
     "replay": "Prioritized Experience Replay",
-    "features": 19,
+    "features": 25,
     "hidden_dim": 512,
     "learning_rate": 5e-05
   },
-  "timestamp": "2025-06-10T16:40:55.163069"
+  "timestamp": "2025-06-10T22:14:45.544763"
 }
