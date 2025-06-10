@@ -1,0 +1,12 @@
+{
+  "test_return": -50.54588878060875,
+  "test_max_drawdown": 50.49638516577453,
+  "test_trades": 297,
+  "test_winning_trades": 142,
+  "test_liquidations": 0,
+  "buy_hold_return": 12.745262806032077,
+  "buy_hold_drawdown": 13.95662261976203,
+  "outperformance": -63.29115158664082,
+  "final_epsilon": 0.00998645168764533,
+  "timestamp": "2025-06-10T10:42:15.600622"
+}
