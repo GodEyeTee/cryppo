@@ -1,0 +1,11 @@
+{
+  "initial_balance": 10000,
+  "fee_rate": 0.0005,
+  "max_leverage": 10,
+  "stop_loss_pct": 0.02,
+  "take_profit_pct": 0.04,
+  "min_position_pct": 0.02,
+  "max_position_pct": 0.2,
+  "base_position_pct": 0.05,
+  "max_drawdown_pct": 0.2
+}
