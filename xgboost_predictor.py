@@ -18,6 +18,13 @@ import warnings
 import time
 import joblib
 from typing import Dict, List, Tuple, Optional
+
+# Try to import sklearn components for newer versions
+try:
+    from sklearn.metrics import classification_report
+except:
+    print("Warning: Some sklearn features not available")
+
 warnings.filterwarnings('ignore')
 
 class DataDownloader:
@@ -174,7 +181,7 @@ class FeatureEngineering:
         
         # Clean data
         df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(method='ffill').fillna(0)
+        df = df.ffill().fillna(0)
         
         return df
 
@@ -189,15 +196,13 @@ class EnhancedDirectionPredictor:
         self.feature_importance = {}
         self.best_features = None
         self.performance_metrics = {}
+        self.use_gpu = self._check_gpu()
         
     def create_dataset(self, df, feature_cols, horizon=4):
         """Create dataset with advanced labeling"""
         X, y, metadata = [], [], []
         
         for i in range(self.lookback, len(df) - horizon):
-            # Features: lookback window
-            X.append(df[feature_cols].iloc[i-self.lookback:i].values.flatten())
-            
             # Get current and future prices
             current_price = df['close'].iloc[i]
             future_prices = df['close'].iloc[i+1:i+horizon+1]
@@ -222,10 +227,14 @@ class EnhancedDirectionPredictor:
             elif future_return < -0.01:  # Negative return
                 label = 0
             else:  # Neutral - use volatility-adjusted threshold
-                vol = df['volatility_20'].iloc[i]
-                threshold = max(0.005, vol * 0.5)
+                if 'volatility_20' in df.columns and pd.notna(df['volatility_20'].iloc[i]):
+                    vol = df['volatility_20'].iloc[i]
+                    threshold = max(0.005, vol * 0.5)
+                else:
+                    threshold = 0.005
                 label = 1 if future_return > threshold else 0
             
+            # Features: lookback window
             X.append(df[feature_cols].iloc[i-self.lookback:i].values.flatten())
             y.append(label)
             metadata.append({
@@ -247,7 +256,8 @@ class EnhancedDirectionPredictor:
             n_estimators=100,
             max_depth=5,
             random_state=42,
-            tree_method='gpu_hist' if self._check_gpu() else 'hist'
+            tree_method='gpu_hist' if self.use_gpu else 'hist',
+            eval_metric='logloss'
         )
         
         model.fit(X_train, y_train)
@@ -284,7 +294,7 @@ class EnhancedDirectionPredictor:
         best_params = None
         
         # Random search for efficiency
-        n_iter = 50
+        n_iter = 20  # Reduced for faster testing
         for i in range(n_iter):
             params = {
                 'max_depth': np.random.choice(param_grid['max_depth']),
@@ -297,14 +307,14 @@ class EnhancedDirectionPredictor:
                 'reg_lambda': np.random.choice(param_grid['reg_lambda']),
                 'objective': 'binary:logistic',
                 'eval_metric': 'logloss',
-                'tree_method': 'gpu_hist' if self._check_gpu() else 'hist',
-                'random_state': 42
+                'tree_method': 'gpu_hist' if self.use_gpu else 'hist',
+                'random_state': 42,
+                'early_stopping_rounds': 50  # Add here for new XGBoost version
             }
             
             model = xgb.XGBClassifier(**params)
             model.fit(X_train, y_train, 
                      eval_set=[(X_val, y_val)], 
-                     early_stopping_rounds=50, 
                      verbose=False)
             
             y_pred = model.predict(X_val)
@@ -335,11 +345,11 @@ class EnhancedDirectionPredictor:
             params['random_state'] = i * 42
             params['subsample'] = np.clip(params['subsample'] + np.random.uniform(-0.1, 0.1), 0.6, 0.95)
             params['colsample_bytree'] = np.clip(params['colsample_bytree'] + np.random.uniform(-0.1, 0.1), 0.6, 0.95)
+            params['early_stopping_rounds'] = 50  # Add here
             
             model = xgb.XGBClassifier(**params)
             model.fit(X_train, y_train,
                      eval_set=[(X_val, y_val)],
-                     early_stopping_rounds=50,
                      verbose=False)
             
             # Validate
@@ -447,10 +457,21 @@ class EnhancedDirectionPredictor:
     def _check_gpu(self):
         """Check if GPU is available for XGBoost"""
         try:
-            import GPUtil
-            gpus = GPUtil.getGPUs()
-            return len(gpus) > 0
+            # Try GPU operation
+            test_params = {
+                'tree_method': 'gpu_hist',
+                'predictor': 'gpu_predictor',
+                'n_estimators': 10,
+                'random_state': 42
+            }
+            test_model = xgb.XGBClassifier(**test_params)
+            test_data = np.random.rand(100, 10)
+            test_labels = np.random.randint(0, 2, 100)
+            test_model.fit(test_data, test_labels)
+            print("GPU is available and working!")
+            return True
         except:
+            print("GPU not available, using CPU")
             return False
     
     def save_model(self, filepath='xgb_predictor.pkl'):
@@ -476,6 +497,9 @@ def main():
     """Main testing function"""
     print("=== Enhanced XGBoost Direction Predictor ===")
     print("Target: >80% accuracy\n")
+    
+    # Check XGBoost version
+    print(f"XGBoost version: {xgb.__version__}")
     
     # 1. Download data
     downloader = DataDownloader()
