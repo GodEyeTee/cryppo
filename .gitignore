@@ -13,6 +13,7 @@ src/utils/config.py
 configs/api_keys.json
 configs/credentials.json
 configs/personal_settings.json
+scaler_params.npy
 
 # Python
 __pycache__/
