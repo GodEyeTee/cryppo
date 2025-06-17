@@ -6,10 +6,13 @@ import time
 import talib
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+import matplotlib.pyplot as plt
+import seaborn as sns
 import gc
 import warnings
 warnings.filterwarnings('ignore')
@@ -100,8 +103,8 @@ class LSTMModel(nn.Module):
         return out
 
 class CryptoDirectionPredictor:
-    def __init__(self, symbols=['BTC/USDT', 'ETH/USDT', 'DOGE/USDT'], 
-                 lookback=300, forecast_steps=12, threshold=0.04):
+    def __init__(self, symbols=['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'DOGE/USDT'], 
+                 lookback=300, forecast_steps=12, threshold=0.02):
         """
         Initialize the predictor with PyTorch
         
@@ -109,7 +112,10 @@ class CryptoDirectionPredictor:
             symbols: List of cryptocurrency pairs to trade
             lookback: Number of past candles to use for prediction (300)
             forecast_steps: Number of future candles to predict (12)
-            threshold: Percentage threshold for up/down classification (4%)
+            threshold: Percentage threshold for up/down classification (2% = 0.02)
+                      - DOWN: < -2%
+                      - SIDEWAYS: -2% to 2%
+                      - UP: > 2%
         """
         self.symbols = symbols
         self.lookback = lookback
@@ -456,11 +462,13 @@ class CryptoDirectionPredictor:
         # Load best model
         self.model.load_state_dict(self.best_model_state)
         
-        # Final evaluation
+        # Final evaluation with confusion matrix
         self.model.eval()
         test_correct = 0
         test_total = 0
         predictions_dist = {0: 0, 1: 0, 2: 0}
+        all_predictions = []
+        all_labels = []
         
         with torch.no_grad():
             for batch_X, batch_y in test_loader:
@@ -469,6 +477,10 @@ class CryptoDirectionPredictor:
                 _, predicted = torch.max(outputs.data, 1)
                 test_total += batch_y.size(0)
                 test_correct += (predicted == batch_y).sum().item()
+                
+                # Store predictions and labels for confusion matrix
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(batch_y.cpu().numpy())
                 
                 # Count predictions
                 for pred in predicted.cpu().numpy():
@@ -481,6 +493,36 @@ class CryptoDirectionPredictor:
         print(f"Down: {predictions_dist[0]} predictions")
         print(f"Sideways: {predictions_dist[1]} predictions")
         print(f"Up: {predictions_dist[2]} predictions")
+        
+        # Confusion Matrix
+        cm = confusion_matrix(all_labels, all_predictions)
+        
+        # Plot confusion matrix
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                    xticklabels=['Down', 'Sideways', 'Up'],
+                    yticklabels=['Down', 'Sideways', 'Up'])
+        plt.title('Confusion Matrix - Crypto Direction Prediction')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.tight_layout()
+        plt.savefig('confusion_matrix.png')
+        plt.show()
+        
+        # Calculate percentages for confusion matrix
+        cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+        
+        print("\nConfusion Matrix (Percentages):")
+        print(f"{'':>10} {'Down':>10} {'Sideways':>10} {'Up':>10}")
+        labels = ['Down', 'Sideways', 'Up']
+        for i, label in enumerate(labels):
+            print(f"{label:>10} {cm_percent[i,0]:>10.1f}% {cm_percent[i,1]:>10.1f}% {cm_percent[i,2]:>10.1f}%")
+        
+        # Classification Report
+        print("\nClassification Report:")
+        print(classification_report(all_labels, all_predictions, 
+                                  target_names=['Down', 'Sideways', 'Up'],
+                                  digits=4))
         
         # Clear memory
         del X_train, X_test, y_train, y_test
@@ -495,9 +537,11 @@ class CryptoDirectionPredictor:
         # Calculate features
         df_features = self.calculate_features(symbol_data.copy())
         
-        # Get last lookback periods
+        # Check if we have enough data after feature calculation
         if len(df_features) < self.lookback:
-            raise ValueError(f"Need at least {self.lookback} periods of data")
+            print(f"Warning: After feature calculation, only {len(df_features)} periods available.")
+            print(f"Need at least {self.lookback} periods. Try providing more raw data.")
+            raise ValueError(f"Need at least {self.lookback} periods of data after feature calculation. Got {len(df_features)}")
         
         features = df_features.values[-self.lookback:].astype('float32')
         
@@ -521,6 +565,109 @@ class CryptoDirectionPredictor:
         directions = {0: 'DOWN', 1: 'SIDEWAYS', 2: 'UP'}
         
         return directions[predicted_class], confidence, probabilities[0].cpu().numpy()
+    
+    def predict_latest(self, symbol='BTC/USDT', hours_back=500):
+        """
+        Convenient method to predict latest price direction
+        
+        Args:
+            symbol: Trading pair to predict
+            hours_back: Number of hours of data to fetch (default 500 to ensure enough data)
+        """
+        print(f"Fetching latest {hours_back} hours of {symbol} data...")
+        
+        # Get recent data
+        end_timestamp = self.exchange.milliseconds()
+        start_timestamp = end_timestamp - (hours_back * 3600000)  # Convert hours to milliseconds
+        
+        try:
+            ohlcv = self.exchange.fetch_ohlcv(
+                symbol,
+                timeframe='1h',
+                since=start_timestamp,
+                limit=hours_back
+            )
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            
+            # Make prediction
+            direction, confidence, probabilities = self.predict(df)
+            
+            return {
+                'symbol': symbol,
+                'direction': direction,
+                'confidence': confidence,
+                'probabilities': {
+                    'down': probabilities[0],
+                    'sideways': probabilities[1],
+                    'up': probabilities[2]
+                },
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+        except Exception as e:
+            print(f"Error predicting {symbol}: {e}")
+            return None
+    
+    def analyze_predictions(self, test_data_dict=None):
+        """
+        Analyze model predictions on test data
+        
+        Args:
+            test_data_dict: Dictionary of test data for each symbol
+        """
+        if self.model is None:
+            print("No trained model found. Please train or load a model first.")
+            return
+        
+        if test_data_dict is None:
+            # Use last 1000 hours from each symbol for testing
+            test_data_dict = {}
+            for symbol in self.symbols:
+                print(f"Fetching test data for {symbol}...")
+                try:
+                    ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe='1h', limit=1000)
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df.set_index('timestamp', inplace=True)
+                    test_data_dict[symbol] = df
+                except Exception as e:
+                    print(f"Error fetching {symbol}: {e}")
+        
+        # Analyze predictions for each symbol
+        results = {}
+        for symbol, df in test_data_dict.items():
+            try:
+                # Get multiple predictions by sliding window
+                predictions = []
+                for i in range(len(df) - self.lookback - 50):
+                    window_data = df.iloc[i:i+self.lookback+50]
+                    direction, confidence, probs = self.predict(window_data)
+                    predictions.append({
+                        'direction': direction,
+                        'confidence': confidence,
+                        'probs': probs
+                    })
+                
+                results[symbol] = predictions
+                
+                # Summary statistics
+                if predictions:
+                    dirs = [p['direction'] for p in predictions]
+                    print(f"\n{symbol} Predictions Summary:")
+                    print(f"  Total predictions: {len(dirs)}")
+                    print(f"  UP: {dirs.count('UP')} ({dirs.count('UP')/len(dirs)*100:.1f}%)")
+                    print(f"  SIDEWAYS: {dirs.count('SIDEWAYS')} ({dirs.count('SIDEWAYS')/len(dirs)*100:.1f}%)")
+                    print(f"  DOWN: {dirs.count('DOWN')} ({dirs.count('DOWN')/len(dirs)*100:.1f}%)")
+                    print(f"  Average confidence: {np.mean([p['confidence'] for p in predictions]):.2%}")
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return results
     
     def save_model(self, model_path='crypto_lstm_model.pth', scaler_path='scaler_params.npy'):
         """Save PyTorch model and scaler"""
@@ -565,12 +712,12 @@ class CryptoDirectionPredictor:
 
 # Main execution
 if __name__ == "__main__":
-    # Initialize predictor
+    # Initialize predictor with 5 symbols and 2% threshold
     predictor = CryptoDirectionPredictor(
-        symbols=['BTC/USDT', 'ETH/USDT', 'DOGE/USDT'],
+        symbols=['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'ADA/USDT', 'DOGE/USDT'],
         lookback=300,
         forecast_steps=12,
-        threshold=0.04
+        threshold=0.02  # Changed from 4% to 2%
     )
     
     # Download data with smaller batches
@@ -589,12 +736,23 @@ if __name__ == "__main__":
     
     # Example prediction
     print("\n--- Making prediction on latest BTC data ---")
-    latest_btc = data['BTC/USDT'].tail(300)
-    direction, confidence, probabilities = predictor.predict(latest_btc)
-    
-    print(f"Predicted direction for next 12 hours: {direction}")
-    print(f"Confidence: {confidence:.2%}")
-    print(f"Probabilities - Down: {probabilities[0]:.2%}, Sideways: {probabilities[1]:.2%}, Up: {probabilities[2]:.2%}")
+    # Get more data to account for NaN values after feature calculation
+    latest_btc = data['BTC/USDT'].tail(400)  # Get extra data
+    try:
+        direction, confidence, probabilities = predictor.predict(latest_btc)
+        
+        print(f"Predicted direction for next 12 hours: {direction}")
+        print(f"Confidence: {confidence:.2%}")
+        print(f"Probabilities - Down: {probabilities[0]:.2%}, Sideways: {probabilities[1]:.2%}, Up: {probabilities[2]:.2%}")
+    except ValueError as e:
+        print(f"Prediction error: {e}")
+        print("Getting more historical data for prediction...")
+        latest_btc = data['BTC/USDT'].tail(500)
+        direction, confidence, probabilities = predictor.predict(latest_btc)
+        
+        print(f"Predicted direction for next 12 hours: {direction}")
+        print(f"Confidence: {confidence:.2%}")
+        print(f"Probabilities - Down: {probabilities[0]:.2%}, Sideways: {probabilities[1]:.2%}, Up: {probabilities[2]:.2%}")
     
     # Final cleanup
     del data
