@@ -243,11 +243,11 @@ class CryptoDirectionPredictor:
         # Calculate future returns
         future_returns = df['returns'].rolling(window=self.forecast_steps).sum().shift(-self.forecast_steps)
         
-        # Create labels
-        labels = pd.Series(index=df.index, dtype='int8')
-        labels[future_returns < -self.threshold] = 0  # Down
-        labels[(future_returns >= -self.threshold) & (future_returns <= self.threshold)] = 1  # Sideways
-        labels[future_returns > self.threshold] = 2  # Up
+        # Create labels - ensure integer type
+        labels = pd.Series(index=df.index, dtype='int32')
+        labels.loc[future_returns < -self.threshold] = 0  # Down
+        labels.loc[(future_returns >= -self.threshold) & (future_returns <= self.threshold)] = 1  # Sideways
+        labels.loc[future_returns > self.threshold] = 2  # Up
         
         return labels
     
@@ -271,7 +271,7 @@ class CryptoDirectionPredictor:
                 y_batch.append(labels[actual_idx])
             
             X_list.append(np.array(X_batch, dtype='float32'))
-            y_list.append(np.array(y_batch, dtype='int8'))
+            y_list.append(np.array(y_batch, dtype='int32'))  # Changed from int8 to int32
             
             # Clear memory
             del X_batch, y_batch
@@ -371,12 +371,13 @@ class CryptoDirectionPredictor:
         ).to(self.device)
         
         # Calculate class weights for imbalanced dataset
-        unique_classes, class_counts = np.unique(y_train, return_counts=True)
+        unique_classes = np.unique(y_train)
+        class_counts = np.array([np.sum(y_train == i) for i in range(3)])
         class_weights = []
+        
         for i in range(3):
-            if i in unique_classes:
-                idx = np.where(unique_classes == i)[0][0]
-                weight = len(y_train) / (3 * class_counts[idx])
+            if class_counts[i] > 0:
+                weight = len(y_train) / (3 * class_counts[i])
                 class_weights.append(weight)
             else:
                 class_weights.append(1.0)
@@ -501,7 +502,7 @@ class CryptoDirectionPredictor:
                 
                 # Count predictions
                 for pred in predicted.cpu().numpy():
-                    predictions_dist[pred] += 1
+                    predictions_dist[int(pred)] += 1
         
         test_accuracy = 100 * test_correct / test_total
         print(f"\nFinal Test Accuracy: {test_accuracy:.2f}%")
@@ -712,10 +713,10 @@ class CryptoDirectionPredictor:
                 ).sum().shift(-self.forecast_steps)
                 
                 # Create labels with current threshold
-                labels = pd.Series(index=df_features.index, dtype='int8')
-                labels[future_returns < -threshold] = 0  # Down
-                labels[(future_returns >= -threshold) & (future_returns <= threshold)] = 1  # Sideways
-                labels[future_returns > threshold] = 2  # Up
+                labels = pd.Series(index=df_features.index, dtype='int32')
+                labels.loc[future_returns < -threshold] = 0  # Down
+                labels.loc[(future_returns >= -threshold) & (future_returns <= threshold)] = 1  # Sideways
+                labels.loc[future_returns > threshold] = 2  # Up
                 
                 # Remove NaN
                 valid_labels = labels[~labels.isna()]
@@ -727,7 +728,7 @@ class CryptoDirectionPredictor:
             
             distribution = {}
             for u, c in zip(unique, counts):
-                label = ['Down', 'Sideways', 'Up'][u]
+                label = ['Down', 'Sideways', 'Up'][int(u)]  # Convert to int
                 distribution[label] = c / total * 100
             
             results[threshold] = distribution
