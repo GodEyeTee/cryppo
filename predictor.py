@@ -370,8 +370,25 @@ class CryptoDirectionPredictor:
             dropout=0.2
         ).to(self.device)
         
-        # Loss function and optimizer
-        criterion = nn.CrossEntropyLoss()
+        # Calculate class weights for imbalanced dataset
+        unique_classes, class_counts = np.unique(y_train, return_counts=True)
+        class_weights = []
+        for i in range(3):
+            if i in unique_classes:
+                idx = np.where(unique_classes == i)[0][0]
+                weight = len(y_train) / (3 * class_counts[idx])
+                class_weights.append(weight)
+            else:
+                class_weights.append(1.0)
+        
+        class_weights = torch.FloatTensor(class_weights).to(self.device)
+        print("\nClass weights for balanced training:")
+        print(f"  Down: {class_weights[0]:.3f}")
+        print(f"  Sideways: {class_weights[1]:.3f}")
+        print(f"  Up: {class_weights[2]:.3f}")
+        
+        # Loss function with class weights
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
         optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
         
@@ -669,6 +686,105 @@ class CryptoDirectionPredictor:
         
         return results
     
+    def find_optimal_threshold(self, data_dict, thresholds=[0.01, 0.015, 0.02, 0.025, 0.03]):
+        """
+        Find optimal threshold for classification
+        
+        Args:
+            data_dict: Training data
+            thresholds: List of thresholds to test
+        """
+        print("Finding optimal threshold...")
+        results = {}
+        
+        for threshold in thresholds:
+            print(f"\nTesting threshold: {threshold*100:.1f}%")
+            
+            # Count distribution for this threshold
+            all_labels = []
+            
+            for symbol, df in data_dict.items():
+                df_features = self.calculate_features(df.copy())
+                
+                # Calculate future returns
+                future_returns = df_features['returns'].rolling(
+                    window=self.forecast_steps
+                ).sum().shift(-self.forecast_steps)
+                
+                # Create labels with current threshold
+                labels = pd.Series(index=df_features.index, dtype='int8')
+                labels[future_returns < -threshold] = 0  # Down
+                labels[(future_returns >= -threshold) & (future_returns <= threshold)] = 1  # Sideways
+                labels[future_returns > threshold] = 2  # Up
+                
+                # Remove NaN
+                valid_labels = labels[~labels.isna()]
+                all_labels.extend(valid_labels.values)
+            
+            # Calculate distribution
+            unique, counts = np.unique(all_labels, return_counts=True)
+            total = len(all_labels)
+            
+            distribution = {}
+            for u, c in zip(unique, counts):
+                label = ['Down', 'Sideways', 'Up'][u]
+                distribution[label] = c / total * 100
+            
+            results[threshold] = distribution
+            
+            print(f"  Down: {distribution.get('Down', 0):.1f}%")
+            print(f"  Sideways: {distribution.get('Sideways', 0):.1f}%")
+            print(f"  Up: {distribution.get('Up', 0):.1f}%")
+            
+            # Calculate balance score (lower is better)
+            balance_score = np.std([distribution.get('Down', 0), 
+                                   distribution.get('Up', 0)])
+            print(f"  Balance score: {balance_score:.2f}")
+        
+        return results
+    
+    def predict_with_multi_threshold(self, symbol_data, thresholds=[0.01, 0.015, 0.02]):
+        """
+        Make predictions using multiple thresholds for comparison
+        """
+        df_features = self.calculate_features(symbol_data.copy())
+        
+        if len(df_features) < self.lookback:
+            raise ValueError(f"Need at least {self.lookback} periods of data")
+        
+        features = df_features.values[-self.lookback:].astype('float32')
+        features_reshaped = features.reshape(-1, features.shape[-1])
+        features_normalized = self.scaler.transform(features_reshaped).astype('float32')
+        features_tensor = torch.FloatTensor(features_normalized.reshape(1, self.lookback, features.shape[-1])).to(self.device)
+        
+        # Get raw predictions
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(features_tensor)
+            probabilities = torch.softmax(outputs, dim=1).cpu().numpy()[0]
+        
+        # Interpret with different thresholds
+        results = {}
+        for threshold in thresholds:
+            # Simple interpretation based on probability differences
+            prob_diff_up = probabilities[2] - probabilities[1]
+            prob_diff_down = probabilities[0] - probabilities[1]
+            
+            if prob_diff_up > threshold * 2:  # Adjust sensitivity
+                direction = 'UP'
+            elif prob_diff_down > threshold * 2:
+                direction = 'DOWN'
+            else:
+                direction = 'SIDEWAYS'
+            
+            results[threshold] = {
+                'direction': direction,
+                'probabilities': probabilities,
+                'confidence': max(probabilities)
+            }
+        
+        return results
+    
     def save_model(self, model_path='crypto_lstm_model.pth', scaler_path='scaler_params.npy'):
         """Save PyTorch model and scaler"""
         if self.model is not None:
@@ -714,16 +830,28 @@ class CryptoDirectionPredictor:
 if __name__ == "__main__":
     # Initialize predictor with 5 symbols and 2% threshold
     predictor = CryptoDirectionPredictor(
-        symbols=['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'ADA/USDT', 'DOGE/USDT'],
+        symbols=['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'DOGE/USDT'],
         lookback=300,
         forecast_steps=12,
-        threshold=0.02  # Changed from 4% to 2%
+        threshold=0.02  # Start with 2%
     )
     
     # Download data with smaller batches
     data = predictor.download_data(start_date='2019-01-01', batch_size=500)
     
-    # Train model
+    # Find optimal threshold
+    print("\n" + "="*60)
+    print("FINDING OPTIMAL THRESHOLD")
+    print("="*60)
+    threshold_results = predictor.find_optimal_threshold(
+        data, 
+        thresholds=[0.01, 0.015, 0.02, 0.025, 0.03]
+    )
+    
+    # Train model with class weights
+    print("\n" + "="*60)
+    print("TRAINING MODEL WITH CLASS WEIGHTS")
+    print("="*60)
     history = predictor.train(data, batch_size=32, max_samples_per_symbol=50000, epochs=100)
     
     # Save model
@@ -734,25 +862,37 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     
-    # Example prediction
-    print("\n--- Making prediction on latest BTC data ---")
-    # Get more data to account for NaN values after feature calculation
-    latest_btc = data['BTC/USDT'].tail(400)  # Get extra data
+    # Example predictions with multiple thresholds
+    print("\n" + "="*60)
+    print("PREDICTIONS WITH MULTIPLE THRESHOLDS")
+    print("="*60)
+    
+    latest_btc = data['BTC/USDT'].tail(400)
     try:
+        # Standard prediction
         direction, confidence, probabilities = predictor.predict(latest_btc)
-        
-        print(f"Predicted direction for next 12 hours: {direction}")
-        print(f"Confidence: {confidence:.2%}")
+        print(f"\nStandard prediction (threshold={predictor.threshold*100:.1f}%):")
+        print(f"Direction: {direction} (Confidence: {confidence:.2%})")
         print(f"Probabilities - Down: {probabilities[0]:.2%}, Sideways: {probabilities[1]:.2%}, Up: {probabilities[2]:.2%}")
-    except ValueError as e:
+        
+        # Multi-threshold predictions
+        multi_results = predictor.predict_with_multi_threshold(
+            latest_btc, 
+            thresholds=[0.01, 0.015, 0.02]
+        )
+        
+        print("\nPredictions with different thresholds:")
+        for threshold, result in multi_results.items():
+            print(f"  {threshold*100:.1f}%: {result['direction']} (confidence: {result['confidence']:.2%})")
+            
+    except Exception as e:
         print(f"Prediction error: {e}")
-        print("Getting more historical data for prediction...")
-        latest_btc = data['BTC/USDT'].tail(500)
-        direction, confidence, probabilities = predictor.predict(latest_btc)
-        
-        print(f"Predicted direction for next 12 hours: {direction}")
-        print(f"Confidence: {confidence:.2%}")
-        print(f"Probabilities - Down: {probabilities[0]:.2%}, Sideways: {probabilities[1]:.2%}, Up: {probabilities[2]:.2%}")
+    
+    # Analyze predictions for all symbols
+    print("\n" + "="*60)
+    print("ANALYZING PREDICTIONS FOR ALL SYMBOLS")
+    print("="*60)
+    analysis_results = predictor.analyze_predictions()
     
     # Final cleanup
     del data
