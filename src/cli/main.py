@@ -1,10 +1,19 @@
 import argparse
 import logging
+import sys
+
 from src.cli.commands import data_commands, train_commands, backtest_commands
 from src.utils.loggers import setup_logger
 from src.utils.config_manager import get_config, set_cuda_env
 
 logger = setup_logger('cli')
+
+
+def _create_subparsers(parser, **kwargs):
+    """Create subparsers with optional ``required`` argument support."""
+    if sys.version_info < (3, 7) and 'required' in kwargs:
+        kwargs = {key: value for key, value in kwargs.items() if key != 'required'}
+    return parser.add_subparsers(**kwargs)
 
 def setup_global_args(parser):
     parser.add_argument('--verbose', '-v', action='count', default=0)
@@ -49,7 +58,69 @@ def main():
     )
     
     setup_global_args(parser)
-    parser.add_subparsers(dest='command', help='คำสั่งที่ต้องการใช้')
+
+    subparsers = _create_subparsers(
+        parser,
+        dest='command',
+        help='คำสั่งที่ต้องการใช้'
+    )
+
+    data_parser = subparsers.add_parser('data', help='Data utilities')
+    data_subparsers = _create_subparsers(
+        data_parser,
+        dest='data_command',
+        required=sys.version_info >= (3, 7),
+        help='คำสั่งย่อยสำหรับการจัดการข้อมูล'
+    )
+
+    download_parser = data_subparsers.add_parser('download', help='ดาวน์โหลดข้อมูลตลาด')
+    data_commands.setup_download_parser(download_parser)
+    download_parser.set_defaults(command='data', data_command='download')
+
+    update_parser = data_subparsers.add_parser('update', help='อัปเดตข้อมูลที่มีอยู่')
+    data_commands.setup_update_parser(update_parser)
+    update_parser.set_defaults(command='data', data_command='update')
+
+    process_parser = data_subparsers.add_parser('process', help='ประมวลผลชุดข้อมูล')
+    data_commands.setup_process_parser(process_parser)
+    process_parser.set_defaults(command='data', data_command='process')
+
+    analyze_parser = data_subparsers.add_parser('analyze', help='วิเคราะห์ข้อมูล')
+    data_commands.setup_analyze_parser(analyze_parser)
+    analyze_parser.set_defaults(command='data', data_command='analyze')
+
+    train_parser = subparsers.add_parser('train', help='การฝึกโมเดล')
+    train_subparsers = _create_subparsers(
+        train_parser,
+        dest='train_command',
+        required=sys.version_info >= (3, 7),
+        help='คำสั่งย่อยสำหรับการฝึกและประเมินโมเดล'
+    )
+
+    model_parser = train_subparsers.add_parser('model', help='ฝึกโมเดลใหม่')
+    train_commands.setup_model_parser(model_parser)
+    model_parser.set_defaults(command='train', train_command='model')
+
+    evaluate_parser = train_subparsers.add_parser('evaluate', help='ประเมินโมเดลที่ฝึกไว้')
+    train_commands.setup_evaluate_parser(evaluate_parser)
+    evaluate_parser.set_defaults(command='train', train_command='evaluate')
+
+    backtest_parser = subparsers.add_parser('backtest', help='การทดสอบย้อนหลัง')
+    backtest_subparsers = _create_subparsers(
+        backtest_parser,
+        dest='backtest_command',
+        required=sys.version_info >= (3, 7),
+        help='คำสั่งย่อยสำหรับการทดสอบย้อนหลัง'
+    )
+
+    run_parser = backtest_subparsers.add_parser('run', help='รันการทดสอบย้อนหลัง')
+    backtest_commands.setup_run_parser(run_parser)
+    run_parser.set_defaults(command='backtest', backtest_command='run')
+
+    analyze_backtest_parser = backtest_subparsers.add_parser('analyze', help='วิเคราะห์ผลการทดสอบย้อนหลัง')
+    backtest_commands.setup_analyze_parser(analyze_backtest_parser)
+    analyze_backtest_parser.set_defaults(command='backtest', backtest_command='analyze')
+
     args = parser.parse_args()
     
     if args.quiet:
