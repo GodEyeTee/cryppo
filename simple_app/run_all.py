@@ -100,7 +100,7 @@ def run_pipeline() -> int:
             model_type="double_dqn",
             window_size=60,
             batch_size=64,
-            epochs=500,  # keep small for demo
+            epochs=2,  # quick verification run
             learning_rate=None,
             discount_factor=None,
             target_update=None,
@@ -200,4 +200,3 @@ def run_pipeline() -> int:
 
 if __name__ == "__main__":
     sys.exit(run_pipeline())
-

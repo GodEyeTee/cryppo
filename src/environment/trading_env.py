@@ -41,6 +41,7 @@ class TradingEnv(BaseEnv):
         self.use_position_info = use_position_info
         self.normalize_obs = normalize_obs
         self.history = []
+        self.current_step = 0
 
         if file_path:
             self.data_manager = MarketDataManager(
@@ -181,10 +182,9 @@ class TradingEnv(BaseEnv):
         df = self.data_manager.data
         start = max(0, self.current_step - self.window_size + 1)
         window = df.iloc[start:self.current_step+1].copy()
+        # Keep only numeric columns to avoid datetime (e.g., close_time)
+        window = window.select_dtypes(include=['number']).copy()
         
-        if 'timestamp' in window:
-            window.drop('timestamp', axis=1, inplace=True)
-            
         arr = window.reindex(list(range(self.current_step - self.window_size + 1, self.current_step+1))).fillna(0).to_numpy()
         
         if self.use_position_info:
@@ -269,8 +269,8 @@ class TradingEnv(BaseEnv):
         
         if len(self.history) < 10:
             return returns
-        
-        returns_history = [h['reward'] for h in self.history[-10:]]
+        # use only entries that contain reward
+        returns_history = [h['reward'] for h in self.history[-10:] if 'reward' in h]
         returns_history.append(returns)
         
         mean_return = np.mean(returns_history)
@@ -287,7 +287,7 @@ class TradingEnv(BaseEnv):
         if len(self.history) < 10:
             return returns
         
-        returns_history = [h['reward'] for h in self.history[-10:]]
+        returns_history = [h['reward'] for h in self.history[-10:] if 'reward' in h]
         returns_history.append(returns)
         
         mean_return = np.mean(returns_history)
@@ -309,7 +309,7 @@ class TradingEnv(BaseEnv):
         if len(self.history) < 10:
             return returns
         
-        returns_history = [h['reward'] for h in self.history[-10:]]
+        returns_history = [h['reward'] for h in self.history[-10:] if 'reward' in h]
         returns_history.append(returns)
         
         mean_return = np.mean(returns_history) * 252

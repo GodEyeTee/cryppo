@@ -1,4 +1,5 @@
 import os
+import torch
 import logging
 from datetime import datetime
 import json
@@ -196,8 +197,12 @@ def handle_run(args):
     if os.path.exists(stats_path):
         data_manager.load_stats(stats_path)
 
+    # Initialize environment with file path (TradingEnv expects file_path, not data_manager)
     env = TradingEnv(
-        data_manager=data_manager,
+        file_path=args.input,
+        window_size=config.get("data.window_size"),
+        initial_balance=backtest_config.get("initial_balance", 10000.0),
+        transaction_fee=backtest_config.get("fee_rate", 0.0025),
         config=config
     )
 
@@ -217,7 +222,7 @@ def handle_run(args):
 
     logger.info("กำลังทดสอบย้อนหลัง...")
     
-    observation = env.reset()
+    observation, _ = env.reset()
     done = False
     total_reward = 0
     actions = []
@@ -228,15 +233,24 @@ def handle_run(args):
     timestamps = []
     
     while not done:
-        action = model.predict(observation)
-        next_observation, reward, done, info = env.step(action)
+        # Greedy action from policy network (use last timestep)
+        with torch.no_grad():
+            st = torch.tensor(observation, dtype=torch.float32, device=model.device)
+            q = model.policy_net(st)
+            if q.dim() == 3:
+                q = q[-1]
+            if q.dim() == 2:
+                q = q[-1]
+            action = int(torch.argmax(q).item())
+        next_observation, reward, terminated, truncated, info = env.step(action)
+        done = bool(terminated) or bool(truncated)
         
         actions.append(action)
         rewards.append(reward)
         dones.append(done)
         positions.append(info.get('position', 0))
-        portfolio_values.append(info.get('portfolio_value', backtest_config.get("initial_balance")))
-        timestamps.append(info.get('timestamp', None))
+        portfolio_values.append(info.get('equity', backtest_config.get("initial_balance")))
+        timestamps.append(None)
         
         observation = next_observation
         total_reward += reward
@@ -247,7 +261,6 @@ def handle_run(args):
     logger.info(f"ทดสอบย้อนหลังเสร็จสิ้น! Total Reward: {total_reward:.4f}, Final Portfolio: {portfolio_values[-1]:.2f}")
 
     trades_df = pd.DataFrame({
-        'timestamp': timestamps,
         'action': actions,
         'reward': rewards,
         'position': positions,
