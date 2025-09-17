@@ -1,9 +1,0 @@
-{
-  "test_return": -0.3024870097330101,
-  "test_max_drawdown": 5.420826102642219,
-  "test_num_trades": 72,
-  "buy_hold_return": 13.016251363882159,
-  "outperformance": -13.318738373615169,
-  "final_epsilon": 0.00998645168764533,
-  "timestamp": "2025-06-10T09:55:11.209523"
-}

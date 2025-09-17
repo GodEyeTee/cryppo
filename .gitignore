@@ -46,6 +46,7 @@ htmlcov/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # Virtual Environment
 venv/
@@ -68,8 +69,9 @@ venv.bak/
 *.sublime-workspace
 *.sublime-project
 
-models/
-results/
+/models/
+/results/
+!src/models/**
 
 # OS
 .DS_Store
@@ -110,3 +112,10 @@ temp/
 !examples/*.csv
 !examples/*.parquet
 !examples/*.json
+
+simple_data/*
+advanced_results.json
+oneclick/*
+oneclick/
+simple_data/
+.ruff_cache/
