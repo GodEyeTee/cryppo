@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import subprocess
 from typing import List
 
 import pandas as pd
@@ -134,6 +136,53 @@ def run_all(cfg: AppConfig) -> None:
         print(f"  {k}: {v}")
 
 
+def run_train(cfg: AppConfig) -> None:
+    print("\n== Train ==")
+    # Suggest last processed from simple_app default
+    default_proc = os.path.join(
+        cfg.processed_dir(),
+        f"{cfg.symbol.lower()}_{cfg.timeframes[0]}_{cfg.start_dt().strftime('%Y%m%d')}_{cfg.end_dt().strftime('%Y%m%d')}.parquet",
+    )
+    in_path = prompt_default("Processed input (.parquet)", default_proc if os.path.exists(default_proc) else "")
+    while not in_path or not os.path.exists(in_path):
+        in_path = _safe_input("  File not found. Enter path again: ").strip()
+
+    out_dir = prompt_default("Output models dir", "outputs/models")
+    model_type = prompt_default("Model type (dqn/double_dqn/dueling_dqn)", "double_dqn")
+    window_size = prompt_default("Window size", "60")
+    batch_size = prompt_default("Batch size", "64")
+    epochs = prompt_default("Epochs (timesteps)", "1000")
+    use_gpu = prompt_default("Use GPU? (y/n)", "n").lower() == "y"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "src.cli.main",
+        "train",
+        "model",
+        "--input",
+        in_path,
+        "--output",
+        out_dir,
+        "--model-type",
+        model_type,
+        "--window-size",
+        window_size,
+        "--batch-size",
+        batch_size,
+        "--epochs",
+        epochs,
+    ]
+    cmd.append("--use-gpu" if use_gpu else "--no-gpu")
+
+    print("\nRunning:")
+    print(" ", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Training failed: {e}")
+
+
 def main() -> None:
     cfg = AppConfig()
     print("Simple CRYPPO — One-Button Menu")
@@ -142,7 +191,8 @@ def main() -> None:
     print("2) Download")
     print("3) Process")
     print("4) Analyze")
-    print("5) Exit")
+    print("5) Train")
+    print("6) Exit")
 
     raw = _safe_input("Select [1]: ")
     choice = (raw.strip() if raw is not None else "") or "1"
@@ -154,6 +204,8 @@ def main() -> None:
         run_process(cfg)
     elif choice == "4":
         run_analyze(cfg)
+    elif choice == "5":
+        run_train(cfg)
     else:
         print("Bye.")
 

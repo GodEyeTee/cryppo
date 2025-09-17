@@ -21,7 +21,7 @@ def parse_date(value: str) -> datetime:
 @dataclass
 class AppConfig:
     symbol: str = "BTCUSDT"
-    timeframes: List[str] = field(default_factory=lambda: ["1m", "5m", "1h"])
+    timeframes: List[str] = field(default_factory=lambda: ["1m", "1h", "1d"])
     start: str = "2023-01-01"
     end: str = "2024-01-01"  # inclusive end-of-day for 2023
     data_dir: str = "simple_data"

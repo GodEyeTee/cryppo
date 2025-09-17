@@ -1,0 +1,27 @@
+{
+  "rows": 119921,
+  "columns": [
+    "timestamp",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "close_time",
+    "quote_volume",
+    "trades",
+    "taker_buy_base_volume",
+    "taker_buy_quote_volume",
+    "return",
+    "rsi_14",
+    "ema_21",
+    "macd",
+    "macd_signal",
+    "macd_hist"
+  ],
+  "start": "2022-12-31 17:00:00",
+  "end": "2023-03-25 01:00:00",
+  "close_min": 16475.83,
+  "close_max": 28767.79,
+  "close_mean": 22349.65067861342
+}
