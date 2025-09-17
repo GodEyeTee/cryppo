@@ -184,7 +184,13 @@ class MarketDataManager:
             
             # ประมวลผลข้อมูลด้วย DataProcessor
             self.data = self.data_processor.preprocess_data(self.raw_data)
-            
+
+            # ถ้ามีการตัดข้อมูลเพื่อให้เป็น I.I.D. ให้จัดแนว raw_data ให้ตรงกัน
+            if self.data_processor.valid_index is not None:
+                valid_index = self.data_processor.valid_index
+                if len(valid_index) != len(self.raw_data):
+                    self.raw_data = self.raw_data.iloc[list(valid_index)].reset_index(drop=True)
+
             # เก็บสถิติสำหรับการแปลงกลับ
             self.stats = self.data_processor.stats
             

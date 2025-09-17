@@ -38,6 +38,8 @@ class DataProcessor:
         self.remove_outliers = preprocessing_config.get("remove_outliers", False)
         self.outlier_std_threshold = preprocessing_config.get("outlier_std_threshold", 3.0)
         self.fill_missing_strategy = preprocessing_config.get("fill_missing_strategy", "ffill")
+        self.make_iid_data = preprocessing_config.get("make_iid_data", False)
+        self.iid_config = preprocessing_config.get("iid", {})
         
         # ขนาดของชุดข้อมูล
         self.batch_size = data_config.get("batch_size", 1024)
@@ -50,6 +52,7 @@ class DataProcessor:
         
         # ข้อมูลทางสถิติสำหรับการทำ normalization
         self.stats = {}
+        self.valid_index = None
         
         logger.info(f"กำลังใช้อุปกรณ์: {self.device}")
         logger.info(f"Log Transform: {self.use_log_transform}, Z-score: {self.use_z_score}")
@@ -199,84 +202,271 @@ class DataProcessor:
         """
         if df.empty:
             return df
-        
+
+        self.valid_index = None
+        self.stats = {}
+
         # คัดลอก DataFrame
         processed_df = df.copy()
-        
+
+        iid_metadata = None
+        if self.make_iid_data:
+            processed_df, valid_index, iid_metadata = self._apply_iid_transformation(processed_df)
+            if iid_metadata:
+                self.stats["iid"] = iid_metadata
+            if valid_index is not None:
+                self.valid_index = valid_index
+
         # แยกคอลัมน์ timestamp
         if 'timestamp' in processed_df.columns:
             timestamp = processed_df['timestamp']
             processed_df = processed_df.drop('timestamp', axis=1)
-        
+        else:
+            timestamp = None
+
         # แยกคอลัมน์ตัวเลขและไม่ใช่ตัวเลข
         numeric_cols = processed_df.select_dtypes(include=np.number).columns
         non_numeric_cols = processed_df.select_dtypes(exclude=np.number).columns
-        
+
         # ประมวลผลคอลัมน์ตัวเลข
         if len(numeric_cols) > 0:
-            # จัดคอลัมน์ OHLCV ให้อยู่ตำแหน่งแรก
-            ohlcv_cols = [col for col in ["open", "high", "low", "close", "volume"] if col in numeric_cols]
-            other_numeric_cols = [col for col in numeric_cols if col not in ohlcv_cols]
-            
-            # สร้าง mask สำหรับคอลัมน์ volume
-            is_volume_col = np.zeros(len(ohlcv_cols), dtype=bool)
-            if "volume" in ohlcv_cols:
-                is_volume_col[ohlcv_cols.index("volume")] = True
-            
+            if self.make_iid_data:
+                # สำหรับข้อมูลที่ถูกทำให้เป็น I.I.D แล้ว ให้ถือเป็นคอลัมน์ตัวเลขทั่วไปทั้งหมด
+                ohlcv_cols = []
+                other_numeric_cols = list(numeric_cols)
+                is_volume_col = np.array([], dtype=bool)
+            else:
+                # จัดคอลัมน์ OHLCV ให้อยู่ตำแหน่งแรก
+                ohlcv_cols = [col for col in ["open", "high", "low", "close", "volume"] if col in numeric_cols]
+                other_numeric_cols = [col for col in numeric_cols if col not in ohlcv_cols]
+
+                # สร้าง mask สำหรับคอลัมน์ volume
+                is_volume_col = np.zeros(len(ohlcv_cols), dtype=bool)
+                if "volume" in ohlcv_cols:
+                    is_volume_col[ohlcv_cols.index("volume")] = True
+
             # ประมวลผลคอลัมน์ OHLCV
             if ohlcv_cols:
                 ohlcv_data = processed_df[ohlcv_cols].values
-                
+
                 # ทำ Log Transform (ถ้าเลือกใช้)
                 if self.use_log_transform:
                     ohlcv_data = log_transform(ohlcv_data, is_volume_col)
-                
+
                 # ทำ Z-score Normalization (ถ้าเลือกใช้)
                 if self.use_z_score:
                     normalized_ohlcv, ohlcv_stats = z_score_normalize(ohlcv_data)
-                    
+
                     # เก็บสถิติสำหรับการแปลงกลับ
                     self.stats["ohlcv"] = {
                         "means": ohlcv_stats["means"].tolist(),
                         "stds": ohlcv_stats["stds"].tolist(),
-                        "columns": ohlcv_cols,
+                        "columns": list(ohlcv_cols),
                         "is_volume_col": is_volume_col.tolist(),
                         "log_transform": self.use_log_transform
                     }
                 else:
                     normalized_ohlcv = ohlcv_data
-                
+
                 # แทนที่ข้อมูลใน DataFrame
                 for i, col in enumerate(ohlcv_cols):
-                    processed_df[col] = normalized_ohlcv[:, i]
-            
+                    processed_df[col] = normalized_ohlcv[:, i].astype(np.float32)
+
             # ประมวลผลคอลัมน์ตัวเลขอื่นๆ
             if other_numeric_cols:
                 other_data = processed_df[other_numeric_cols].values
-                
+
                 # ทำ Z-score Normalization (ถ้าเลือกใช้)
                 if self.use_z_score:
                     normalized_other, other_stats = z_score_normalize(other_data)
-                    
-                    # เก็บสถิติสำหรับการแปลงกลับ
-                    self.stats["other"] = {
+
+                    stats_key = "iid" if self.make_iid_data else "other"
+                    stats_entry = {
                         "means": other_stats["means"].tolist(),
                         "stds": other_stats["stds"].tolist(),
-                        "columns": other_numeric_cols,
+                        "columns": list(other_numeric_cols),
                         "log_transform": False
                     }
+
+                    if stats_key in self.stats:
+                        self.stats[stats_key].update(stats_entry)
+                    else:
+                        self.stats[stats_key] = stats_entry
+
+                    normalized_other = normalized_other
                 else:
                     normalized_other = other_data
-                
+
+                    if self.make_iid_data:
+                        self.stats.setdefault("iid", {}).update({
+                            "columns": list(other_numeric_cols),
+                            "log_transform": False
+                        })
+                    else:
+                        self.stats["other"] = {
+                            "columns": list(other_numeric_cols),
+                            "log_transform": False
+                        }
+
                 # แทนที่ข้อมูลใน DataFrame
                 for i, col in enumerate(other_numeric_cols):
-                    processed_df[col] = normalized_other[:, i]
-        
+                    processed_df[col] = normalized_other[:, i].astype(np.float32)
+
         # เพิ่มคอลัมน์ timestamp กลับเข้าไป
-        if 'timestamp' in df.columns:
-            processed_df['timestamp'] = timestamp
-        
+        if timestamp is not None:
+            processed_df['timestamp'] = timestamp.reset_index(drop=True) if isinstance(timestamp, pd.Series) else timestamp
+
+        # คืนค่า DataFrame ที่ผ่านการประมวลผลแล้ว
         return processed_df
+
+    def _apply_iid_transformation(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[pd.Index], Optional[Dict[str, Any]]]:
+        try:
+            working_df = df.copy()
+
+            timestamp = None
+            if 'timestamp' in working_df.columns:
+                timestamp = working_df['timestamp']
+                working_df = working_df.drop(columns=['timestamp'])
+
+            numeric_cols = working_df.select_dtypes(include=np.number).columns.tolist()
+            if not numeric_cols:
+                return df, None, None
+
+            other_cols = [col for col in working_df.columns if col not in numeric_cols]
+            numeric_data = working_df[numeric_cols]
+
+            iid_features, valid_index, metadata = self._make_iid_features(numeric_data)
+
+            if iid_features.empty:
+                logger.warning("การแปลงข้อมูลเป็น I.I.D. ได้ผลลัพธ์ว่างเปล่า ใช้ข้อมูลเดิมแทน")
+                return df, None, None
+
+            combined_parts = [iid_features]
+
+            if other_cols:
+                other_part = working_df.loc[valid_index, other_cols]
+                combined_parts.append(other_part)
+
+            result_df = pd.concat(combined_parts, axis=1)
+
+            if timestamp is not None:
+                timestamp_aligned = timestamp.loc[valid_index]
+                result_df['timestamp'] = timestamp_aligned.reset_index(drop=True)
+
+            result_df = result_df.reset_index(drop=True)
+
+            return result_df, valid_index, metadata
+
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการทำข้อมูลให้เป็น I.I.D.: {e}")
+            return df, None, None
+
+    def _make_iid_features(self, numeric_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Index, Dict[str, Any]]:
+        iid_cfg = self.iid_config or {}
+
+        method = str(iid_cfg.get("method", "log_return")).lower()
+        volume_method = str(iid_cfg.get("volume_method", "pct_change")).lower()
+        other_method = str(iid_cfg.get("other_method", "diff")).lower()
+        epsilon = float(iid_cfg.get("epsilon", 1e-8))
+        dropna = bool(iid_cfg.get("dropna", True))
+        fillna_value = float(iid_cfg.get("fillna_value", 0.0))
+
+        configured_prices = iid_cfg.get("price_columns")
+        configured_volumes = iid_cfg.get("volume_columns")
+        configured_others = iid_cfg.get("other_columns")
+
+        price_candidates = ["open", "high", "low", "close", "adj_close", "bid", "ask"]
+        volume_candidates = ["volume", "quote_volume", "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume"]
+
+        price_cols = [col for col in (configured_prices or price_candidates) if col in numeric_df.columns]
+        volume_cols = [col for col in (configured_volumes or volume_candidates) if col in numeric_df.columns]
+
+        if configured_others is not None:
+            other_cols = [col for col in configured_others if col in numeric_df.columns]
+        else:
+            other_cols = [col for col in numeric_df.columns if col not in price_cols + volume_cols]
+
+        result = pd.DataFrame(index=numeric_df.index)
+
+        suffix_map = {
+            "log_return": "log_return",
+            "pct_change": "pct_change",
+            "diff": "diff"
+        }
+
+        def _apply_method(data: pd.DataFrame, mode: str, allow_log: bool = True) -> pd.DataFrame:
+            if data.empty:
+                return pd.DataFrame(index=data.index)
+
+            clean_data = data.astype(np.float64).replace([np.inf, -np.inf], np.nan)
+
+            if mode == "log_return":
+                if not allow_log:
+                    mode = "pct_change"
+                else:
+                    positive_data = clean_data.clip(lower=epsilon)
+                    transformed = np.log(positive_data).diff()
+                    return transformed
+
+            if mode == "pct_change":
+                transformed = clean_data.pct_change()
+            elif mode == "diff":
+                transformed = clean_data.diff()
+            elif mode == "log_return":
+                positive_data = clean_data.clip(lower=epsilon)
+                transformed = np.log(positive_data).diff()
+            else:
+                raise ValueError(f"โหมด I.I.D. ไม่รองรับ: {mode}")
+
+            return transformed
+
+        if price_cols:
+            price_data = numeric_df[price_cols]
+            price_features = _apply_method(price_data, method)
+            price_features = price_features.replace([np.inf, -np.inf], np.nan)
+            for col in price_cols:
+                new_name = f"{col}_{suffix_map.get(method, method)}"
+                result[new_name] = price_features[col]
+
+        if volume_cols:
+            volume_data = numeric_df[volume_cols]
+            volume_features = _apply_method(volume_data, volume_method, allow_log=False)
+            volume_features = volume_features.replace([np.inf, -np.inf], np.nan)
+            for col in volume_cols:
+                new_name = f"{col}_{suffix_map.get(volume_method, volume_method)}"
+                result[new_name] = volume_features[col]
+
+        if other_cols:
+            other_data = numeric_df[other_cols]
+            other_features = _apply_method(other_data, other_method, allow_log=False)
+            other_features = other_features.replace([np.inf, -np.inf], np.nan)
+            for col in other_cols:
+                new_name = f"{col}_{suffix_map.get(other_method, other_method)}"
+                result[new_name] = other_features[col]
+
+        result = result.replace([np.inf, -np.inf], np.nan)
+
+        if dropna:
+            result = result.dropna()
+            valid_index = result.index
+        else:
+            result = result.fillna(fillna_value)
+            valid_index = result.index
+
+        metadata = {
+            "method": method,
+            "volume_method": volume_method,
+            "other_method": other_method,
+            "price_columns": price_cols,
+            "volume_columns": volume_cols,
+            "other_columns": other_cols,
+            "columns": result.columns.tolist(),
+            "epsilon": epsilon,
+            "dropna": dropna,
+            "fillna_value": fillna_value
+        }
+
+        return result.astype(np.float32), valid_index, metadata
     
     def inverse_transform(self, data: np.ndarray, stat_type: str = "ohlcv") -> np.ndarray:
         if stat_type not in self.stats:
