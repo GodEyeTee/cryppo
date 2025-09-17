@@ -9,7 +9,6 @@ logs/
 .env
 
 # ไฟล์การตั้งค่าส่วนตัว
-src/utils/config.py
 configs/api_keys.json
 configs/credentials.json
 configs/personal_settings.json
