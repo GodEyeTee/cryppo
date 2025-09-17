@@ -153,7 +153,7 @@ def run_pipeline() -> int:
             start_date=None,
             end_date=None,
             initial_balance=10_000.0,
-            leverage=1.0,
+            leverage=3.0,
             fee_rate=0.0025,
             stop_loss=None,
             take_profit=None,

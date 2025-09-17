@@ -107,9 +107,7 @@ def download_klines(
             cursor = chunk_end
             continue
         all_rows.extend(part)
-        if len(part) < MAX_CANDLES_PER_REQUEST:
-            # likely exhausted
-            break
+        # Continue looping until we reach end_ms
         # next open time = last close open time + interval
         cursor = part[-1][0] + interval_ms
 
@@ -130,4 +128,3 @@ def download_klines(
     # sort & drop duplicates by timestamp
     df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
     return df
-

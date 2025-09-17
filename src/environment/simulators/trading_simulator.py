@@ -76,16 +76,17 @@ class TradingSimulator:
             return False
         
         if units is None:
+            # Use fraction of balance for position value including fees and slippage
             if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
-                available_balance = self.balance
+                budget = self.balance
             else:
-                available_balance = self.balance * float(self.position_size)
-            
-            fee = available_balance * self.transaction_fee
-            available_balance -= fee
-            units = available_balance / price
+                budget = self.balance * float(self.position_size)
+            total_multiplier = 1.0 + float(self.transaction_fee) + float(self.slippage)
+            position_value = budget / total_multiplier
+            units = position_value / price
+        else:
+            position_value = price * units
         
-        position_value = price * units
         fee = position_value * self.transaction_fee
         slippage_amount = position_value * self.slippage
         total_cost = position_value + fee + slippage_amount
@@ -130,12 +131,18 @@ class TradingSimulator:
             return False
         
         if units is None:
+            # Use fraction of balance as total cash outlay (margin + fees + slippage)
             if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
-                available_balance = self.balance
+                budget = self.balance
             else:
-                available_balance = self.balance * float(self.position_size)
-            
-            margin = available_balance
+                budget = self.balance * float(self.position_size)
+            # required_balance = margin + fee + slippage, where fee/slippage are on position_value
+            # position_value = margin * leverage
+            # required_balance = margin + (margin*leverage)*(fee+slip)
+            # Solve margin such that required_balance <= budget
+            fee_slip = float(self.transaction_fee) + float(self.slippage)
+            denom = 1.0 + self.leverage * fee_slip
+            margin = budget / denom
             position_value = margin * self.leverage
             units = position_value / price
         else:
