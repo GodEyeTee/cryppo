@@ -120,8 +120,19 @@ class ConfigManager:
             else:
                 target[key] = value
     
-    def extract_subconfig(self, section: str) -> Dict[str, Any]:
-        return self.config.get(section, {})
+    def extract_subconfig(self, section: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Return a nested section of the configuration.
+
+        Parameters
+        ----------
+        section:
+            Top-level key to extract from the config dict.
+        default:
+            Value to return when the section is not present. Defaults to empty dict.
+        """
+        if default is None:
+            default = {}
+        return self.config.get(section, default)
     
     def to_dict(self) -> Dict[str, Any]:
         return self.config

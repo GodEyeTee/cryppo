@@ -110,14 +110,16 @@ class BinanceDownloader(BaseDownloader):
         # แปลงข้อมูลเป็น DataFrame
         df = self._candles_to_dataframe(all_candles)
         
-        # ลบแท่งเทียนปัจจุบันที่ยังไม่ปิด (ถ้าต้องการ)
-        if not include_current_candle:
-            current_time = datetime.now()
-            if timeframe == "1m":
-                # ถ้าเป็นไทม์เฟรม 1 นาที ให้ลบแท่งเทียนสุดท้ายที่อยู่ในนาทีปัจจุบัน
-                df = df[df['timestamp'] < pd.Timestamp(current_time.replace(second=0, microsecond=0))]
-            else:
-                # สำหรับไทม์เฟรมอื่นๆ ให้ลบแท่งเทียนสุดท้ายเพื่อความปลอดภัย
+        # ลบแท่งเทียนสุดท้ายถ้ายังไม่ปิดตามขอบเขตปลายทาง (now หรือ end_date)
+        if not include_current_candle and len(df) > 0:
+            interval_ms = self.api.get_interval_ms(timeframe)
+            # คำนวณเวลาปิดของแท่งสุดท้ายใน DataFrame
+            last_open_ms = int(df['timestamp'].iloc[-1].value // 1_000_000)
+            last_close_ms = last_open_ms + interval_ms - 1
+            # ปลายทางที่ใช้ตรวจสอบ: ถ้า user ระบุ end_date ให้ใช้ค่านั้น ไม่เช่นนั้นให้ใชเวลา "ตอนนี้"
+            effective_end_ms = end_ts if end_date is not None else int(datetime.now().timestamp() * 1000)
+            # ถ้าแท่งสุดท้ายยังไม่ปิดเมื่อเทียบกับปลายทาง ให้ตัดออก
+            if last_close_ms >= effective_end_ms:
                 df = df.iloc[:-1]
         
         # บันทึกข้อมูล
