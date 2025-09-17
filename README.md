@@ -75,6 +75,128 @@ $ pip install -r requirements.txt
 
 ---
 
+## 🧾 สรุปคำสั่ง CLI
+
+CLI ของ **CRYPPO** ทำงานผ่านโมดูล `src.cli.main` โดยมีโครงสร้างคำสั่งหลักดังนี้:
+
+```bash
+python -m src.cli.main <หมวดคำสั่ง> <คำสั่งย่อย> [options]
+```
+
+### ตัวเลือกหลักที่ใช้ได้กับทุกคำสั่ง
+
+* `-v/--verbose` เพิ่มระดับ log (ใช้ซ้ำได้ถึง 3 ครั้งสำหรับ DEBUG)
+* `-q/--quiet` แสดงเฉพาะข้อความ error
+* `-c/--config <path>` โหลดไฟล์คอนฟิกเพิ่มเติมก่อนรันคำสั่ง
+* `--cuda` เปิดการใช้งาน CUDA ตามค่าที่ตั้งในคอนฟิก
+
+รัน `--help` กับทุกคำสั่งเพื่อดูตัวเลือกเพิ่มเติม เช่น `python -m src.cli.main data --help` หรือ `python -m src.cli.main data download --help`.
+
+### หมวด `data`
+
+* `download` – ดาวน์โหลดข้อมูลจาก Binance หลายไทม์เฟรมในครั้งเดียวและบันทึกเป็น CSV/Parquet
+
+  ```bash
+  python -m src.cli.main data download \
+      --symbol BTCUSDT \
+      --timeframes 1m,5m,1h \
+      --start 2023-01-01 \
+      --end 2023-12-31 \
+      --output data/raw \
+      --format parquet
+  ```
+
+* `update` – เติมข้อมูลล่าสุดลงในชุดข้อมูลที่มีอยู่ โดยรักษาโครงสร้างไดเรกทอรีเดิม
+
+  ```bash
+  python -m src.cli.main data update \
+      --symbol BTCUSDT \
+      --timeframes 1m,5m \
+      --data-dir data/raw \
+      --format parquet
+  ```
+
+* `process` – ทำความสะอาด ปรับสเกล และคำนวณอินดิเคเตอร์ก่อนนำไปใช้เทรน
+
+  ```bash
+  python -m src.cli.main data process \
+      --input data/raw/BTCUSDT/1m \
+      --output data/processed/BTCUSDT/1m \
+      --file-pattern "*.parquet" \
+      --indicators rsi,ema,macd \
+      --window-size 60
+  ```
+
+* `analyze` – ตรวจสอบสถิติ ข้อมูลหาย และสร้างกราฟเบื้องต้นของชุดข้อมูล
+
+  ```bash
+  python -m src.cli.main data analyze \
+      --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+      --stats \
+      --plot price \
+      --period-stats daily
+  ```
+
+### หมวด `train`
+
+* `model` – เทรนโมเดล RL ตามคอนฟิก พร้อมบันทึกโมเดลและสถิติการเทรน
+
+  ```bash
+  python -m src.cli.main train model \
+      --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+      --output models/btcusdt \
+      --model-type double_dqn \
+      --window-size 60 \
+      --batch-size 128 \
+      --epochs 100000 \
+      --learning-rate 0.0001 \
+      --validation-ratio 0.1 \
+      --test-ratio 0.1 \
+      --use-gpu \
+      --tensorboard
+  ```
+
+* `evaluate` – ประเมินโมเดลที่เทรนแล้วกับชุดข้อมูลใหม่หรือข้อมูลเดิม
+
+  ```bash
+  python -m src.cli.main train evaluate \
+      --model models/btcusdt/double_dqn_20250511_141809/model.pt \
+      --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+      --output results/evaluation/btcusdt_double_dqn.json \
+      --batch-size 128 \
+      --metrics sharpe_ratio,sortino_ratio \
+      --plot
+  ```
+
+### หมวด `backtest`
+
+* `run` – ทดสอบย้อนหลังด้วยโมเดลที่บันทึกไว้ พร้อมบันทึกเทรดและเมตริกสำคัญ
+
+  ```bash
+  python -m src.cli.main backtest run \
+      --model models/btcusdt/double_dqn_20250511_141809/model.pt \
+      --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+      --output results/backtest \
+      --initial-balance 10000 \
+      --leverage 3.0 \
+      --fee-rate 0.0025 \
+      --stop-loss 5.0 \
+      --take-profit 0.5 \
+      --plot
+  ```
+
+* `analyze` – วิเคราะห์ผล Backtest ที่บันทึกไว้ และเปรียบเทียบกับ Benchmark
+
+  ```bash
+  python -m src.cli.main backtest analyze \
+      --input results/backtest/backtest_20250511_141809 \
+      --metrics total_return,sharpe_ratio,max_drawdown \
+      --benchmark results/backtest/buy_and_hold \
+      --plot equity
+  ```
+
+---
+
 ## 📊 การเตรียมข้อมูล
 
 ### รูปแบบข้อมูล: Parquet
@@ -87,13 +209,44 @@ $ pip install -r requirements.txt
 ### ดาวน์โหลดข้อมูล
 
 ```bash
-python -m src.cli.main data download --symbol BTCUSDT --timeframe 1m --start 2023-01-01 --end 2023-12-31
+python -m src.cli.main data download \
+    --symbol BTCUSDT \
+    --timeframes 1m,5m \
+    --start 2023-01-01 \
+    --end 2023-12-31 \
+    --output data/raw \
+    --format parquet
+```
+
+### อัปเดตข้อมูลล่าสุด
+
+```bash
+python -m src.cli.main data update \
+    --symbol BTCUSDT \
+    --timeframes 1m,5m \
+    --data-dir data/raw \
+    --format parquet
 ```
 
 ### ประมวลผลข้อมูล
 
 ```bash
-python -m src.cli.main data process --input data/raw/BTCUSDT/1m --output data/processed/BTCUSDT/1m --file-pattern "*.parquet"
+python -m src.cli.main data process \
+    --input data/raw/BTCUSDT/1m \
+    --output data/processed/BTCUSDT/1m \
+    --file-pattern "*.parquet" \
+    --indicators rsi,ema,macd \
+    --window-size 60
+```
+
+### วิเคราะห์คุณภาพข้อมูล
+
+```bash
+python -m src.cli.main data analyze \
+    --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+    --stats \
+    --plot all \
+    --period-stats weekly
 ```
 
 ---
@@ -165,16 +318,58 @@ data_manager = MarketDataManager(
 
 ## 🎯 การเทรนและทดสอบ
 
-### เทรนโมเดล:
+### เทรนโมเดล
 
 ```bash
-python -m src.cli.main train model --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet --output models/btcusdt --model-type double_dqn --window-size 60 --batch-size 128 --epochs 5 --learning-rate 0.0001 --use-gpu
+python -m src.cli.main train model \
+    --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+    --output models/btcusdt \
+    --model-type double_dqn \
+    --window-size 60 \
+    --batch-size 128 \
+    --epochs 100000 \
+    --learning-rate 0.0001 \
+    --validation-ratio 0.1 \
+    --test-ratio 0.1 \
+    --use-gpu \
+    --tensorboard
 ```
 
-### Backtest:
+### ประเมินโมเดล
 
 ```bash
-python -m src.cli.main backtest run --model models/btcusdt/double_dqn_20250511_141809/model.pt --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet --output results/backtest --initial-balance 10000 --leverage 3.0 --fee-rate 0.0025 --stop-loss 5.0 --take-profit 0.5 --plot
+python -m src.cli.main train evaluate \
+    --model models/btcusdt/double_dqn_20250511_141809/model.pt \
+    --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+    --output results/evaluation/btcusdt_double_dqn.json \
+    --batch-size 128 \
+    --metrics sharpe_ratio,sortino_ratio \
+    --plot
+```
+
+### ทดสอบย้อนหลัง
+
+```bash
+python -m src.cli.main backtest run \
+    --model models/btcusdt/double_dqn_20250511_141809/model.pt \
+    --input data/processed/BTCUSDT/1m/btcusdt_1m_combined.parquet \
+    --output results/backtest \
+    --initial-balance 10000 \
+    --leverage 3.0 \
+    --fee-rate 0.0025 \
+    --stop-loss 5.0 \
+    --take-profit 0.5 \
+    --plot
+```
+
+### วิเคราะห์ผล Backtest
+
+```bash
+python -m src.cli.main backtest analyze \
+    --input results/backtest/backtest_20250511_141809 \
+    --metrics total_return,sharpe_ratio,max_drawdown \
+    --benchmark results/backtest/buy_and_hold \
+    --plot equity
 ```
 
 ---
