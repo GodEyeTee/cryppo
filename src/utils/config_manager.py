@@ -1,8 +1,17 @@
-import os
+"""Configuration management utilities for CRYPPO.
+
+This module exposes a :class:`ConfigManager` that is responsible for loading,
+storing and mutating configuration dictionaries.  It also contains a couple of
+helper functions that are consumed by the CLI – notably ``set_cuda_env`` which
+was previously missing from the public interface and caused imports to fail.
+"""
+
 import json
-import yaml
 import logging
-from typing import Dict, Any, Optional, List
+import os
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 logger = logging.getLogger('utils.config')
 
@@ -85,9 +94,6 @@ class ConfigManager:
         
         return current
     
-    def set_cuda_env():
-        os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-    
     def set(self, key: str, value: Any) -> bool:
         if not key:
             return False
@@ -106,18 +112,6 @@ class ConfigManager:
     
     def update_from_dict(self, data: Dict[str, Any]):
         self._deep_update(self.config, data)
-    
-    def update_config_from_args(config, args, mapping):
-        for arg_name, config_path in mapping.items():
-            if hasattr(args, arg_name) and getattr(args, arg_name) is not None:
-                value = getattr(args, arg_name)
-                
-                if arg_name in ['stop_loss', 'take_profit'] and value is not None:
-                    value = value / 100.0 
-                    
-                config.set(config_path, value)
-        
-        return config
     
     def _deep_update(self, target: Dict[str, Any], source: Dict[str, Any]):
         for key, value in source.items():
@@ -141,9 +135,46 @@ class ConfigManager:
 
 _config_instance = None
 
+
+def set_cuda_env() -> None:
+    """Configure CUDA related environment variables for deterministic runs."""
+
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    logger.info("Enabled CUDA_LAUNCH_BLOCKING for deterministic CUDA execution")
+
+
+def update_config_from_args(config: ConfigManager, args: Any, mapping: Dict[str, str]) -> ConfigManager:
+    """Apply CLI arguments to the configuration object.
+
+    Parameters
+    ----------
+    config:
+        Instance of :class:`ConfigManager` to be updated.
+    args:
+        Parsed arguments object, typically from :mod:`argparse`.
+    mapping:
+        Dictionary mapping argument names to configuration paths within the
+        configuration dictionary.
+    """
+
+    for arg_name, config_path in mapping.items():
+        if hasattr(args, arg_name):
+            value = getattr(args, arg_name)
+
+            if value is None:
+                continue
+
+            if arg_name in ["stop_loss", "take_profit"]:
+                value = value / 100.0
+
+            config.set(config_path, value)
+
+    return config
+
+
 def get_config(config_path: Optional[str] = None) -> ConfigManager:
     global _config_instance
-    
+
     if _config_instance is None:
         _config_instance = ConfigManager(config_path)
     elif config_path:
