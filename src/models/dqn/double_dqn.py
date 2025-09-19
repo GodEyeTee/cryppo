@@ -60,9 +60,9 @@ class DoubleDQN(DQN):
         
         logger.info(f"Created Double DQN")
     
-    def update(self) -> float:
+    def update(self) -> Optional[float]:
         if len(self.replay_buffer) < self.batch_size:
-            return 0.0
+            return None
         
         try:
             batch = self.replay_buffer.sample(self.batch_size)
@@ -154,13 +154,13 @@ class DoubleDQN(DQN):
                 print(f"Error during Q-values calculation or loss computation: {e}")
                 import traceback
                 traceback.print_exc()
-                return 0.0
+                return None
         
         except Exception as e:
             print(f"Error during update: {e}")
             import traceback
             traceback.print_exc()
-            return 0.0
+            return None
     
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -202,6 +202,9 @@ class DoubleDQN(DQN):
     def _create_model(self) -> torch.nn.Module:
         return self.policy_net
     
+
+
+
     def train(self, train_loader, val_loader=None, epochs=None, log_dir=None) -> Dict[str, Any]:
         try:
             if log_dir:
@@ -212,72 +215,112 @@ class DoubleDQN(DQN):
         except Exception as e:
             print(f"Cannot setup TensorboardLogger: {e}")
             tensorboard_logger = None
-        
+
         if epochs is None:
             epochs = 100
-        
+
         history = {
             'train_loss': [],
             'val_loss': []
         }
-        
+
         for epoch in range(epochs):
             epoch_loss = 0.0
-            num_batches = 0
-            
-            for batch_idx, (states,) in enumerate(train_loader):
+            loss_updates = 0
+            warmup_batches = 0
+
+            for batch_idx, batch in enumerate(train_loader):
+                if isinstance(batch, (list, tuple)) and len(batch) == 4:
+                    states, next_states, price_deltas, done_flags = batch
+                else:
+                    states = batch[0]
+                    next_states = states.clone()
+                    price_deltas = torch.zeros(states.size(0), dtype=torch.float32)
+                    done_flags = torch.zeros(states.size(0), dtype=torch.float32)
+
                 states_np = states.cpu().numpy()
-                
-                for state in states_np:
+                next_states_np = next_states.cpu().numpy()
+                deltas_np = price_deltas.cpu().numpy()
+                dones_np = done_flags.cpu().numpy()
+
+                last_loss = None
+
+                for idx_sample in range(states_np.shape[0]):
+                    state = states_np[idx_sample]
+                    next_state = next_states_np[idx_sample]
+                    price_delta = float(deltas_np[idx_sample])
+                    done = bool(dones_np[idx_sample])
+
                     action = self.select_action(state)
-                    next_state = state.copy()
-                    reward = 0.0
-                    done = False
-                    
+                    reward = self._calculate_trade_reward(action, price_delta)
+
                     self.store_experience(state, action, reward, next_state, done)
-                
-                loss = self.update()
-                
-                epoch_loss += loss
-                num_batches += 1
-                
+
+                    loss_value = self.update()
+                    if loss_value is None:
+                        continue
+
+                    last_loss = loss_value
+                    epoch_loss += loss_value
+                    loss_updates += 1
+
+                if last_loss is None:
+                    warmup_batches += 1
                 if batch_idx % 10 == 0:
-                    print(f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, Loss: {loss:.6f}")
-            
-            avg_loss = epoch_loss / max(num_batches, 1)
+                    if last_loss is None:
+                        print(
+                            f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, "
+                            f"Loss: warming_up (buffer {len(self.replay_buffer)}/{self.batch_size})"
+                        )
+                    else:
+                        print(
+                            f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, "
+                            f"Loss: {last_loss:.8f}"
+                        )
+
+            avg_loss = (epoch_loss / loss_updates) if loss_updates else None
             history['train_loss'].append(avg_loss)
-            
-            if tensorboard_logger:
+
+            if tensorboard_logger and avg_loss is not None:
                 try:
                     tensorboard_logger.log_scalar('train_loss', avg_loss, epoch)
                 except Exception as e:
                     print(f"Cannot log to TensorBoard: {e}")
-            
+
+            loss_display = f"{avg_loss:.6f}" if avg_loss is not None else "n/a (buffering replay)"
+
             if val_loader:
                 try:
                     val_loss = self.evaluate(val_loader)['loss']
                     history['val_loss'].append(val_loss)
-                    
+
                     if tensorboard_logger:
                         tensorboard_logger.log_scalar('val_loss', val_loss, epoch)
-                    
-                    logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}, Val Loss: {val_loss:.6f}")
+
+                    logger.info(
+                        f"Epoch {epoch+1}/{epochs}, Train Loss: {loss_display}, Val Loss: {val_loss:.6f}"
+                    )
                 except Exception as e:
                     logger.error(f"Error evaluating validation set: {e}")
-                    logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}")
+                    logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {loss_display}")
             else:
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}")
-        
+                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {loss_display}")
+
+            if warmup_batches:
+                logger.debug(
+                    f"Epoch {epoch+1}: skipped {warmup_batches} batches while filling replay buffer (updates={loss_updates})"
+                )
+
         self.is_trained = True
-        
+
         if tensorboard_logger:
             try:
                 tensorboard_logger.close()
-            except:
+            except Exception:
                 pass
-        
+
         return history
-    
+
     def predict(self, inputs) -> int:
         inputs = self._prepare_input(inputs)
         

@@ -93,28 +93,34 @@ def calculate_trading_metrics(trades_df, raw_data=None, risk_free_rate=0.0, peri
         
         for i in range(0, len(position_changes) - 1, 2):
             if i + 1 < len(position_changes):
-                trade_count += 1
-                
                 start_idx = position_changes[i]
                 end_idx = position_changes[i + 1]
-                
+
                 start_value = trades_df['portfolio_value'].iloc[start_idx]
                 end_value = trades_df['portfolio_value'].iloc[end_idx]
-                
+
+                if start_value <= 1e-9:
+                    continue
+
+                trade_count += 1
                 trade_return = (end_value / start_value) - 1
-                
+
                 if trade_return > 0:
                     winning_trades += 1
-                else:
+                elif trade_return < 0:
                     losing_trades += 1
-        
+
         metrics['total_trades'] = trade_count
+        metrics['trades_count'] = trade_count
         metrics['winning_trades'] = winning_trades
         metrics['losing_trades'] = losing_trades
-        
+
         if trade_count > 0:
-            metrics['win_rate'] = (winning_trades / trade_count) * 100
+            metrics['win_rate'] = winning_trades / trade_count
     
+    if 'win_rate' not in metrics:
+        metrics['win_rate'] = 0.0
+
     return metrics
 
 def handle_run(args):
@@ -135,7 +141,7 @@ def handle_run(args):
     config_path = os.path.join(model_dir, "config.json")
 
     if os.path.exists(config_path):
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             model_config = json.load(f)
             config.update_from_dict(model_config)
     
@@ -149,24 +155,31 @@ def handle_run(args):
     
     if args.start_date:
         backtest_config["start_date"] = args.start_date
+        config.set('environment.start_date', args.start_date)
     
     if args.end_date:
         backtest_config["end_date"] = args.end_date
+        config.set('environment.end_date', args.end_date)
     
     if args.initial_balance:
         backtest_config["initial_balance"] = args.initial_balance
+        config.set('environment.initial_balance', args.initial_balance)
     
     if args.leverage:
         backtest_config["leverage"] = args.leverage
+        config.set('environment.leverage', args.leverage)
     
     if args.fee_rate:
         backtest_config["fee_rate"] = args.fee_rate
+        config.set('environment.fee_rate', args.fee_rate)
     
     if args.stop_loss:
         backtest_config["stop_loss"] = args.stop_loss / 100.0
+        config.set('environment.stop_loss', args.stop_loss / 100.0)
     
     if args.take_profit:
         backtest_config["take_profit"] = args.take_profit / 100.0
+        config.set('environment.take_profit', args.take_profit / 100.0)
     
     if args.use_gpu is not None:
         config.set("cuda.use_cuda", args.use_gpu)
@@ -203,17 +216,59 @@ def handle_run(args):
         window_size=config.get("data.window_size"),
         initial_balance=backtest_config.get("initial_balance", 10000.0),
         transaction_fee=backtest_config.get("fee_rate", 0.0025),
+        use_position_info=False,
         config=config
     )
 
+    if args.leverage and hasattr(env, 'simulator'):
+        env.simulator.leverage = float(args.leverage)
+
     model_type = config.get("model.model_type")
-    input_size = 25
+
+    input_size = None
+    action_dim = None
+    model_config_path = os.path.join(model_dir, "model_config.json")
+    if os.path.exists(model_config_path):
+        try:
+            with open(model_config_path, 'r', encoding='utf-8') as f:
+                stored_model_cfg = json.load(f)
+            input_size = stored_model_cfg.get('state_dim')
+            action_dim = stored_model_cfg.get('action_dim')
+        except Exception as e:
+            logger.warning(f"ไม่สามารถโหลดการตั้งค่าโมเดลจาก {model_config_path}: {e}")
+
+    if input_size is None:
+        try:
+            checkpoint = torch.load(args.model, map_location='cpu')
+            if isinstance(checkpoint, dict):
+                for key in ("state_dim", "input_size"):
+                    if key in checkpoint and checkpoint[key]:
+                        input_size = int(checkpoint[key])
+                        break
+                if input_size is None:
+                    for weight_key in ("network.0.weight", "0.weight"):
+                        if weight_key in checkpoint.get('policy_net', {}):
+                            input_size = checkpoint['policy_net'][weight_key].shape[1]
+                            break
+        except Exception as e:
+            logger.warning(f"ไม่สามารถอ่านขนาดอินพุตจากโมเดล: {e}")
+
+    if input_size is None:
+        numeric_columns = data_manager.data.select_dtypes(include=['number']).columns.tolist()
+        if 'timestamp' in numeric_columns and not pd.api.types.is_numeric_dtype(data_manager.data['timestamp']):
+            numeric_columns.remove('timestamp')
+        input_size = len(numeric_columns)
+        logger.warning(f"ใช้จำนวนฟีเจอร์จากข้อมูล ({input_size}) เป็นขนาดอินพุตเนื่องจากไม่พบในโมเดล")
+
+    if action_dim is not None:
+        config.set('environment.action_dim', action_dim)
+
     model = ModelFactory.create_model(
         model_type=model_type,
         input_size=input_size,
         config=config
     )
-    
+
     model.load(args.model)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -283,14 +338,18 @@ def handle_run(args):
         json.dump(metrics, f, indent=2)
 
     # Print summary
+    total_return_pct = metrics.get('total_return', 0) * 100
+    max_drawdown_pct = metrics.get('max_drawdown', 0) * 100
+    win_rate_pct = metrics.get('win_rate', 0) * 100
+
     print("\nสรุปผลการทดสอบย้อนหลัง:")
     print(f"จำนวนวันทดสอบ: {metrics.get('trading_days', 'N/A')} วัน")
     print(f"เงินทุนเริ่มต้น: {backtest_config.get('initial_balance', trades_df['portfolio_value'].iloc[0]):.2f}")
     print(f"มูลค่าพอร์ตสุดท้าย: {portfolio_values[-1]:.2f}")
-    print(f"กำไร/ขาดทุนรวม: {portfolio_values[-1] - trades_df['portfolio_value'].iloc[0]:.2f} ({metrics.get('total_return', 0):.2f}%)")
+    print(f"กำไร/ขาดทุนรวม: {portfolio_values[-1] - trades_df['portfolio_value'].iloc[0]:.2f} ({total_return_pct:.2f}%)")
     print(f"Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.4f}")
-    print(f"Max Drawdown: {metrics.get('max_drawdown', 0):.2f}%")
-    print(f"Win Rate: {metrics.get('win_rate', 0):.2f}%")
+    print(f"Max Drawdown: {max_drawdown_pct:.2f}%")
+    print(f"Win Rate: {win_rate_pct:.2f}%")
     print(f"จำนวนการเทรดทั้งหมด: {metrics.get('total_trades', 0)}")
     print(f"จำนวนการเทรดที่ทำกำไร: {metrics.get('winning_trades', 0)}")
     print(f"จำนวนการเทรดที่ขาดทุน: {metrics.get('losing_trades', 0)}")
@@ -333,12 +392,12 @@ def handle_analyze(args):
 
         trades_df = pd.read_csv(trades_path)
         
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
         
         # Get metrics
         if os.path.exists(metrics_path):
-            with open(metrics_path, 'r') as f:
+            with open(metrics_path, 'r', encoding='utf-8') as f:
                 metrics = json.load(f)
         else:
             data_path = None

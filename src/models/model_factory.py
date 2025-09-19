@@ -36,11 +36,17 @@ class ModelFactory:
         
         if model_class:
             try:
-                print(f"Creating model with input_size: {input_size}")
+                logger.info(f"Creating model {model_type} with input_size={input_size}")
                 
-                action_dim = 4  # From Trading_env.ACTIONS (NONE, LONG, SHORT, EXIT)
-                input_size = 25  # Adjust input size to match data
-                
+                action_dim = config.get("environment.action_dim")
+                if action_dim is None:
+                    try:
+                        from src.environment.trading_env import TradingEnv
+                        action_dim = len(getattr(TradingEnv, "ACTIONS", {})) or 4
+                    except Exception:
+                        action_dim = 4  # Fallback when environment cannot be imported
+                action_dim = int(action_dim)
+
                 if issubclass(model_class, DQN):
                     model = model_class(
                         input_size=input_size, 

@@ -169,8 +169,15 @@ class PerformanceTracker:
         self.equity_curve.append(equity)
         
         if len(self.equity_curve) > 1:
-            last_return = (equity / self.equity_curve[-2]) - 1
-            self.returns.append(last_return)
+            previous_equity = self.equity_curve[-2]
+            if abs(previous_equity) <= 1e-9:
+                last_return = 0.0
+            else:
+                last_return = (equity / previous_equity) - 1
+            if np.isfinite(last_return):
+                self.returns.append(last_return)
+            else:
+                self.returns.append(0.0)
         
         self.positions.append(position)
         

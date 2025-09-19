@@ -135,6 +135,12 @@ class DQN:
         self.weight_decay = weight_decay or model_config.get("weight_decay", 0.0)
         self.clip_grad_norm = clip_grad_norm or model_config.get("clip_grad_norm", None)
         
+        env_config = self.config.extract_subconfig("environment")
+
+        self.trade_fee = float(env_config.get("fee_rate", 0.0))
+        self.hold_penalty = float(env_config.get("hold_penalty", 0.0001))
+        self.flat_penalty = float(env_config.get("flat_penalty", 0.00005))
+
         if device is None:
             self.device = torch.device("cuda" if cuda_config.get("use_cuda", True) and torch.cuda.is_available() else "cpu")
         else:
@@ -179,15 +185,43 @@ class DQN:
     def select_action(self, state: np.ndarray, evaluation: bool = False) -> int:
         if not evaluation and random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
-        else:
-            with torch.no_grad():
-                state_tensor = torch.FloatTensor(state).to(self.device)
-                q_values = self.policy_net(state_tensor)
-                return q_values.argmax().item()
+
+        with torch.no_grad():
+            state_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device)
+
+            if state_tensor.dim() == 1:
+                state_tensor = state_tensor.unsqueeze(0)
+            elif state_tensor.dim() == 2:
+                state_tensor = state_tensor.unsqueeze(0)
+
+            q_values = self.policy_net(state_tensor)
+
+            if q_values.dim() == 3:
+                q_values = q_values[:, -1, :]
+
+            if q_values.dim() == 2:
+                q_values = q_values.squeeze(0)
+
+            action = int(torch.argmax(q_values).item())
+            return max(0, min(action, self.action_dim - 1))
     
-    def update(self) -> float:
+    def _calculate_trade_reward(self, action: int, price_delta: float) -> float:
+        fee_penalty = abs(price_delta) * self.trade_fee
+
+        if action == 1:  # LONG
+            reward = price_delta - fee_penalty
+        elif action == 2:  # SHORT
+            reward = -price_delta - fee_penalty
+        elif action == 3:  # EXIT
+            reward = -abs(price_delta) * (self.hold_penalty * 2.0)
+        else:  # NONE / HOLD
+            reward = -abs(price_delta) * self.flat_penalty
+
+        return float(np.tanh(reward))
+
+    def update(self) -> Optional[float]:
         if len(self.replay_buffer) < self.batch_size:
-            return 0.0
+            return None
         
         batch = self.replay_buffer.sample(self.batch_size)
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)

@@ -40,6 +40,7 @@ class TradingEnv(BaseEnv):
         self.transaction_fee = transaction_fee or env_cfg.get("fee_rate", 0.0025)
         self.use_position_info = use_position_info
         self.normalize_obs = normalize_obs
+        self.failure_penalty = float(env_cfg.get("failure_penalty", -1000.0))
         self.history = []
         self.current_step = 0
 
@@ -120,64 +121,92 @@ class TradingEnv(BaseEnv):
         if not self.action_space.contains(action):
             logger.warning(f"Invalid action: {action}, using NONE instead")
             action = self.ACTIONS['NONE']
-        
+
         if self.done:
             next_obs = self._get_observation()
             return next_obs, 0.0, self.done, False, self.info
-        
+
+        self.steps += 1
+
         next_state, reward, done, info = self._process_action(action)
         self.state = next_state
         self.done = done
         self.info = info
         self.total_rewards += reward
-        
+
+        executed_action = info.get('action', action)
+        price = info.get('price', 0.0)
+        date = info.get('date')
+        equity = info.get('equity', self.simulator.get_equity(price))
+
         self.history.append({
-            'step': self.current_step,
-            'price': self.prices[self.current_step] if self.current_step < len(self.prices) else 0,
-            'date': self.dates[self.current_step] if self.current_step < len(self.dates) else None,
-            'action': action,
+            'step': info.get('step', max(self.current_step - 1, 0)),
+            'price': price,
+            'date': date,
+            'action': executed_action,
             'reward': reward,
             'balance': self.simulator.balance,
+            'equity': equity,
             'position': self.simulator.position_type,
             'units': self.simulator.units,
-            'profit': self.simulator.profit
+            'profit': self.simulator.profit,
+            'failure_reason': info.get('failure_reason')
         })
-        
-        truncated = self.max_steps and self.steps >= self.max_steps
-        
+
+        truncated = bool(self.max_steps and self.steps >= self.max_steps)
+
         if self.render_mode != "none":
             self.render()
-        
+
         return next_state, reward, done, truncated, info
-    
+
     def _process_action(self, action: int):
         if not self.action_space.contains(action):
             action = self.ACTIONS['NONE']
-            
-        price = self.prices[self.current_step]
-        prev_price = self.prices[self.current_step - 1] if self.current_step > 0 else price
-        
+
+        step_index = self.current_step
+        price = self.prices[step_index]
+        prev_price = self.prices[step_index - 1] if step_index > 0 else price
+
+        operation_ok = True
         if action == self.ACTIONS['LONG']:
-            self.simulator.open_long_position(price)
+            operation_ok = self.simulator.open_long_position(price)
         elif action == self.ACTIONS['SHORT']:
-            self.simulator.open_short_position(price)
+            operation_ok = self.simulator.open_short_position(price)
         elif action == self.ACTIONS['EXIT']:
-            self.simulator.close_position(price)
-            
+            operation_ok = self.simulator.close_position(price)
+
+        failure_reason = self.simulator.failure_reason
+        if not operation_ok and failure_reason:
+            info = self._make_info(price, step_index, action)
+            info['failure_reason'] = failure_reason
+            obs = self._get_observation()
+            penalty = self.failure_penalty
+            self.simulator.clear_failure()
+            return obs, penalty, True, info
+
         self.simulator.update(price)
+        failure_reason = self.simulator.failure_reason
+        if failure_reason and not self.simulator.has_position():
+            info = self._make_info(price, step_index, action)
+            info['failure_reason'] = failure_reason
+            obs = self._get_observation()
+            penalty = self.failure_penalty
+            self.simulator.clear_failure()
+            return obs, penalty, True, info
+
         self.current_step += 1
         done = self.current_step >= len(self.prices) - 1
-        
+
         if done and self.simulator.has_position():
             self.simulator.close_position(price)
-            
+
         reward = self.reward_function(self.simulator, price, prev_price)
         obs = self._get_observation()
-        info = self._make_info(price)
-        self.history.append(info.copy())
-        
+        info = self._make_info(price, step_index, action)
+
         return obs, reward, done, info
-    
+
     def _get_observation(self):
         df = self.data_manager.data
         start = max(0, self.current_step - self.window_size + 1)
@@ -197,18 +226,27 @@ class TradingEnv(BaseEnv):
             
         return arr.astype(np.float32)
     
-    def _make_info(self, price):
+    def _make_info(self, price, step_index, action):
+        date = None
+        if hasattr(self, 'dates') and 0 <= step_index < len(self.dates):
+            date = self.dates[step_index]
+
+        balance = self.simulator.balance
+        equity = self.simulator.get_equity(price)
+
         return {
-            'step': self.current_step,
+            'step': step_index,
             'price': price,
-            'balance': self.simulator.balance,
-            'equity': self.simulator.get_equity(price),
+            'date': date,
+            'balance': balance,
+            'equity': equity,
             'position': self.simulator.position_type,
             'units': self.simulator.units,
             'profit': self.simulator.profit,
-            'action': None
+            'action': action,
+            'failure_reason': None
         }
-    
+
     def _get_initial_state(self, options: Dict[str, Any] = None) -> np.ndarray:
         return self._get_observation()
     

@@ -10,6 +10,13 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    import torch
+except ImportError:
+    torch = None
+
+USE_GPU_AVAILABLE = bool(torch and torch.cuda.is_available())
+
 from .config import AppConfig
 from .binance import download_klines
 from .process import process_df
@@ -100,17 +107,19 @@ def run_pipeline() -> int:
             model_type="double_dqn",
             window_size=60,
             batch_size=64,
-            epochs=2,  # quick verification run
+            epochs=100000,  # timesteps for environment training
             learning_rate=None,
             discount_factor=None,
             target_update=None,
             validation_ratio=0.1,
             test_ratio=0.1,
-            use_gpu=False,
+            use_gpu=USE_GPU_AVAILABLE,
             tensorboard=False,
             seed=42,
             config=None,
         )
+        device_msg = 'GPU' if USE_GPU_AVAILABLE else 'CPU'
+        print(f'  Training device: {device_msg}')
         train_cli.handle_model(args)
         # Find newest model dir
         model_dir = newest_dir(str(model_root), "double_dqn_")
@@ -135,7 +144,7 @@ def run_pipeline() -> int:
             window_size=None,
             metrics="all",
             plot=False,
-            use_gpu=False,
+            use_gpu=USE_GPU_AVAILABLE,
         )
         train_cli.handle_evaluate(args_eval)
         print(f"  Saved: {test_out}")
@@ -159,7 +168,7 @@ def run_pipeline() -> int:
             take_profit=None,
             window_size=None,
             batch_size=None,
-            use_gpu=False,
+            use_gpu=USE_GPU_AVAILABLE,
             plot=False,
             verbose=False,
             config=None,

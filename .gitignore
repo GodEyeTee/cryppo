@@ -119,3 +119,7 @@ oneclick/*
 oneclick/
 simple_data/
 .ruff_cache/
+
+
+*.pyc
+**/*.pyc

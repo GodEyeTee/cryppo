@@ -22,6 +22,8 @@ class Transaction:
     position_type: str
     
 class TradingSimulator:
+    FUNDS_EPSILON = 1e-6
+
     def __init__(
         self,
         initial_balance: float = 10000.0,
@@ -38,19 +40,46 @@ class TradingSimulator:
         self.config = config if config is not None else get_config()
         env_config = self.config.extract_subconfig("environment")
         
-        self.initial_balance = initial_balance or env_config.get("initial_balance", 10000.0)
-        self.transaction_fee = transaction_fee or env_config.get("fee_rate", 0.0025)
-        self.slippage = slippage or env_config.get("slippage", 0.0005)
-        self.leverage = leverage or env_config.get("leverage", 1.0)
-        self.liquidation_threshold = liquidation_threshold or env_config.get("liquidation_threshold", 0.8)
-        self.position_size = position_size if position_size != 'auto' else env_config.get("position_size", 1.0)
-        self.stop_loss = stop_loss or env_config.get("stop_loss", None)
-        self.take_profit = take_profit or env_config.get("take_profit", None)
-        self.max_positions = max_positions or env_config.get("max_positions", 1)
+        self.initial_balance = initial_balance if initial_balance is not None else env_config.get("initial_balance", 10000.0)
+        self.transaction_fee = transaction_fee if transaction_fee is not None else env_config.get("fee_rate", 0.0025)
+        self.slippage = slippage if slippage is not None else env_config.get("slippage", 0.0005)
+        self.leverage = leverage if leverage is not None else env_config.get("leverage", 1.0)
+        self.liquidation_threshold = liquidation_threshold if liquidation_threshold is not None else env_config.get("liquidation_threshold", 0.8)
+
+        self.position_mode = str(env_config.get("position_mode", "fraction")).lower()
+        if self.position_mode not in {"fixed_value", "fraction"}:
+            self.position_mode = "fraction"
+
+        if self.position_mode == "fixed_value":
+            default_value = env_config.get("position_value", 100.0)
+            if isinstance(position_size, (int, float)) and position_size is not None and position_size > 1.0:
+                self.fixed_position_value = float(position_size)
+            else:
+                self.fixed_position_value = float(default_value)
+            self.position_size = None
+        else:
+            if position_size == 'auto':
+                self.position_size = env_config.get("position_size", 1.0)
+            else:
+                self.position_size = position_size if position_size is not None else env_config.get("position_size", 1.0)
+            self.fixed_position_value = None
+
+        self.stop_loss = stop_loss if stop_loss is not None else env_config.get("stop_loss")
+        self.take_profit = take_profit if take_profit is not None else env_config.get("take_profit")
+        self.max_positions = max_positions if max_positions is not None else env_config.get("max_positions", 1)
         
+        self._warned_events = set()
+        self.failure_reason: Optional[str] = None
+
         self.reset()
         logger.info(f"Created TradingSimulator (balance={self.initial_balance}, fee={self.transaction_fee}, leverage={self.leverage})")
     
+    def _warn_once(self, key: str, message: str, level=logging.WARNING):
+        if key in self._warned_events:
+            return
+        self._warned_events.add(key)
+        logger.log(level, message)
+
     def reset(self, initial_balance: Optional[float] = None) -> None:
         self.balance = initial_balance if initial_balance is not None else self.initial_balance
         self.position_type = 'none'
@@ -69,43 +98,65 @@ class TradingSimulator:
         self.max_drawdown = 0.0
         self.peak_balance = initial_balance if initial_balance is not None else self.initial_balance
         self.transactions = []
-    
+        self._warned_events.clear()
+        self.failure_reason = None
+
+    def _normalize_balance(self):
+        if abs(self.balance) <= self.FUNDS_EPSILON:
+            self.balance = 0.0
+
+    def clear_failure(self) -> None:
+        self.failure_reason = None
+
+    def _set_failure(self, reason: str, message: Optional[str] = None, level=logging.ERROR) -> None:
+        self.failure_reason = reason
+        if message:
+            self._warn_once(f"failure_{reason}", message, level=level)
+
     def open_long_position(self, price: float, units: Optional[float] = None, timestamp: Optional[datetime] = None) -> bool:
         if self.position_type != 'none':
-            logger.warning(f"Position {self.position_type} already open, cannot open Long position")
+            self._warn_once("long_already_open", f"Position {self.position_type} already open, cannot open Long position")
             return False
-        
+
         if units is None:
-            # Use fraction of balance for position value including fees and slippage
-            if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
-                budget = self.balance
+            if self.position_mode == 'fixed_value':
+                position_value = float(self.fixed_position_value or 0.0)
+                if position_value <= 0:
+                    self._set_failure('invalid_position_value', "Fixed position size must be positive")
+                    return False
+                units = position_value / max(price, self.FUNDS_EPSILON)
             else:
-                budget = self.balance * float(self.position_size)
-            total_multiplier = 1.0 + float(self.transaction_fee) + float(self.slippage)
-            position_value = budget / total_multiplier
-            units = position_value / price
+                if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
+                    budget = self.balance
+                else:
+                    budget = self.balance * float(self.position_size)
+                total_multiplier = 1.0 + float(self.transaction_fee) + float(self.slippage)
+                position_value = budget / total_multiplier
+                units = position_value / max(price, self.FUNDS_EPSILON)
         else:
             position_value = price * units
-        
+
         fee = position_value * self.transaction_fee
         slippage_amount = position_value * self.slippage
         total_cost = position_value + fee + slippage_amount
-        
-        if total_cost > self.balance:
-            logger.warning(f"Insufficient funds: need {total_cost}, have {self.balance}")
+
+        if total_cost > self.balance + self.FUNDS_EPSILON:
+            self._set_failure('insufficient_funds_long', f"Insufficient funds: need {total_cost:.2f}, have {self.balance:.2f}")
             return False
-        
+
         self.position_type = 'long'
         self.position_price = price
         self.position_start_time = timestamp if timestamp is not None else datetime.now()
         self.units = units
         self.margin = 0.0
-        
+
         balance_before = self.balance
         self.balance -= total_cost
+        self._normalize_balance()
         self.total_fee += fee
         self.num_trades += 1
-        
+        self.clear_failure()
+
         self.transactions.append(Transaction(
             timestamp=self.position_start_time,
             action='buy',
@@ -117,57 +168,62 @@ class TradingSimulator:
             balance_after=self.balance,
             position_type=self.position_type
         ))
-        
+
         logger.info(f"Opened Long position: {units} units @ {price} = {position_value} + fee {fee}")
         return True
     
     def open_short_position(self, price: float, units: Optional[float] = None, timestamp: Optional[datetime] = None) -> bool:
         if self.position_type != 'none':
-            logger.warning(f"Position {self.position_type} already open, cannot open Short position")
+            self._warn_once("short_already_open", f"Position {self.position_type} already open, cannot open Short position")
             return False
-        
+
         if self.leverage <= 1.0:
-            logger.warning(f"Cannot open Short position because leverage = {self.leverage} (must be > 1.0)")
+            self._warn_once("short_leverage", f"Cannot open Short position because leverage = {self.leverage} (must be > 1.0)")
             return False
-        
+
         if units is None:
-            # Use fraction of balance as total cash outlay (margin + fees + slippage)
-            if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
-                budget = self.balance
+            if self.position_mode == 'fixed_value':
+                position_value = float(self.fixed_position_value or 0.0)
+                if position_value <= 0:
+                    self._set_failure('invalid_position_value', "Fixed position size must be positive")
+                    return False
+                margin = position_value / max(self.leverage, self.FUNDS_EPSILON)
+                units = position_value / max(price, self.FUNDS_EPSILON)
             else:
-                budget = self.balance * float(self.position_size)
-            # required_balance = margin + fee + slippage, where fee/slippage are on position_value
-            # position_value = margin * leverage
-            # required_balance = margin + (margin*leverage)*(fee+slip)
-            # Solve margin such that required_balance <= budget
-            fee_slip = float(self.transaction_fee) + float(self.slippage)
-            denom = 1.0 + self.leverage * fee_slip
-            margin = budget / denom
-            position_value = margin * self.leverage
-            units = position_value / price
+                if isinstance(self.position_size, str) and self.position_size.lower() == 'full':
+                    budget = self.balance
+                else:
+                    budget = self.balance * float(self.position_size)
+                fee_slip = float(self.transaction_fee) + float(self.slippage)
+                denom = 1.0 + self.leverage * fee_slip
+                margin = budget / denom
+                position_value = margin * self.leverage
+                units = position_value / max(price, self.FUNDS_EPSILON)
         else:
             position_value = price * units
-            margin = position_value / self.leverage
-        
+            margin = position_value / max(self.leverage, self.FUNDS_EPSILON)
+
         fee = position_value * self.transaction_fee
         slippage_amount = position_value * self.slippage
         required_balance = margin + fee + slippage_amount
-        
-        if required_balance > self.balance:
-            logger.warning(f"Insufficient funds: need {required_balance}, have {self.balance}")
+
+        if required_balance > self.balance + self.FUNDS_EPSILON:
+            self._set_failure('insufficient_funds_short', f"Insufficient funds: need {required_balance:.2f}, have {self.balance:.2f}")
             return False
-        
+
         self.position_type = 'short'
         self.position_price = price
         self.position_start_time = timestamp if timestamp is not None else datetime.now()
         self.units = units
         self.margin = margin
-        
+
         balance_before = self.balance
         self.balance -= (margin + fee + slippage_amount)
+        self._normalize_balance()
         self.total_fee += fee
         self.num_trades += 1
-        
+        self.clear_failure()
+
         self.transactions.append(Transaction(
             timestamp=self.position_start_time,
             action='short',
@@ -179,13 +235,13 @@ class TradingSimulator:
             balance_after=self.balance,
             position_type=self.position_type
         ))
-        
+
         logger.info(f"Opened Short position: {units} units @ {price} = {position_value} (margin: {margin}) + fee {fee}")
         return True
     
     def close_position(self, price: float, timestamp: Optional[datetime] = None) -> bool:
         if self.position_type == 'none':
-            logger.warning("No open position to close")
+            self._warn_once("close_no_position", "No open position to close")
             return False
         
         timestamp = timestamp or datetime.now()
@@ -206,7 +262,9 @@ class TradingSimulator:
             self.balance += (self.position_price * self.units) + profit
         else:
             self.balance += self.margin + profit
-        
+
+        self._normalize_balance()
+
         self.profit = profit
         self.total_profit += profit
         self.total_fee += fee
@@ -263,20 +321,29 @@ class TradingSimulator:
         
         if self.position_type == 'short':
             position_value = price * self.units
-            margin_ratio = self.margin / position_value
-            
-            if margin_ratio < self.liquidation_threshold:
-                logger.warning(f"Liquidation: Margin Ratio = {margin_ratio:.2f} (threshold: {self.liquidation_threshold})")
+
+            if abs(position_value) <= self.FUNDS_EPSILON:
+                self._set_failure("position_value_zero", "Position value too small to evaluate margin; closing short position")
                 return self.close_position(price)
-        
+
+            margin_ratio = self.margin / max(abs(position_value), self.FUNDS_EPSILON)
+
+            if margin_ratio < self.liquidation_threshold:
+                self._set_failure("liquidation", f"Liquidation: Margin Ratio = {margin_ratio:.2f} (threshold: {self.liquidation_threshold})")
+                return self.close_position(price)
+
         return False
     
     def get_equity(self, price: float) -> float:
-        if self.position_type == 'none':
-            return self.balance
-        
-        unrealized_profit = (price - self.position_price) * self.units if self.position_type == 'long' else (self.position_price - price) * self.units
-        return self.balance + unrealized_profit
+        equity = self.balance
+
+        if self.position_type == 'long':
+            equity += price * self.units
+        elif self.position_type == 'short':
+            equity += self.margin
+            equity += (self.position_price - price) * self.units
+
+        return equity
     
     def has_position(self) -> bool:
         return self.position_type != 'none'

@@ -260,7 +260,7 @@ class DuelingDQN(DQN):
         
         logger.info(f"สร้าง Dueling DQN (state_dim={state_dim}, action_dim={action_dim}, device={self.device})")
     
-    def update(self) -> float:
+    def update(self) -> Optional[float]:
         """
         อัพเดต policy network จาก replay buffer โดยใช้ Double DQN ร่วมกับ Dueling network
         
@@ -269,7 +269,7 @@ class DuelingDQN(DQN):
         """
         # ตรวจสอบว่ามีข้อมูลพอสำหรับการเทรนหรือไม่
         if len(self.replay_buffer) < self.batch_size:
-            return 0.0
+            return None
         
         # สุ่มตัวอย่าง batch จาก replay buffer
         batch = self.replay_buffer.sample(self.batch_size)
@@ -401,87 +401,113 @@ class DuelingDQN(DQN):
         """
         return self.policy_net
     
+
     def train(self, train_loader, val_loader=None, epochs=None, log_dir=None) -> Dict[str, Any]:
-        """
-        เทรนโมเดล (สำหรับ BaseModel interface)
-        
-        Parameters:
-        train_loader: DataLoader สำหรับข้อมูลเทรน
-        val_loader: DataLoader สำหรับข้อมูล validation
-        epochs (int, optional): จำนวนรอบการเทรน
-        log_dir (str, optional): ไดเรกทอรีสำหรับบันทึก log
-        
-        Returns:
-        Dict[str, Any]: ประวัติการเทรน
-        """
-        # ตั้งค่า TensorBoard logger ถ้าจำเป็น
-        tensorboard_logger = self._setup_tensorboard(log_dir) if log_dir else None
-        
-        # กำหนดจำนวนรอบการเทรน
+        """Train the model following the BaseModel contract."""
+
+        tensorboard_logger = None
+        if log_dir:
+            try:
+                tensorboard_logger = self._setup_tensorboard(log_dir)
+            except Exception as e:
+                print(f"Cannot setup TensorboardLogger: {e}")
+                tensorboard_logger = None
+
         if epochs is None:
-            epochs = 100  # ค่าเริ่มต้น
-        
-        # ประวัติการเทรน
+            epochs = 100
+
         history = {
             'train_loss': [],
             'val_loss': []
         }
-        
+
         for epoch in range(epochs):
-            # เทรนโมเดล
             epoch_loss = 0.0
-            num_batches = 0
-            
-            for batch_idx, (states,) in enumerate(train_loader):
-                # แปลงข้อมูลเป็น numpy array
+            loss_updates = 0
+            warmup_batches = 0
+
+            for batch_idx, batch in enumerate(train_loader):
+                if isinstance(batch, (list, tuple)) and len(batch) == 4:
+                    states, next_states, price_deltas, done_flags = batch
+                else:
+                    states = batch[0]
+                    next_states = states.clone()
+                    price_deltas = torch.zeros(states.size(0), dtype=torch.float32)
+                    done_flags = torch.zeros(states.size(0), dtype=torch.float32)
+
                 states_np = states.cpu().numpy()
-                
-                # สร้างข้อมูลการเทรนเสมือน
-                for state in states_np:
-                    # เลือกการกระทำตามนโยบาย epsilon-greedy
+                next_states_np = next_states.cpu().numpy()
+                deltas_np = price_deltas.cpu().numpy()
+                dones_np = done_flags.cpu().numpy()
+
+                last_loss = None
+
+                for idx_sample in range(states_np.shape[0]):
+                    state = states_np[idx_sample]
+                    next_state = next_states_np[idx_sample]
+                    price_delta = float(deltas_np[idx_sample])
+                    done = bool(dones_np[idx_sample])
+
                     action = self.select_action(state)
-                    
-                    # สร้างสถานะถัดไป, รางวัล, และสถานะจบเสมือน
-                    next_state = state  # สมมติว่าไม่มีการเปลี่ยนแปลง
-                    reward = 0.0  # สมมติว่าไม่มีรางวัล
-                    done = False  # สมมติว่าไม่จบ
-                    
-                    # เก็บประสบการณ์ใน replay buffer
+                    reward = self._calculate_trade_reward(action, price_delta)
+
                     self.store_experience(state, action, reward, next_state, done)
-                
-                # อัพเดตโมเดล
-                loss = self.update()
-                
-                epoch_loss += loss
-                num_batches += 1
-            
-            # คำนวณค่าเฉลี่ยของ loss
-            avg_loss = epoch_loss / max(num_batches, 1)
+
+                    loss_value = self.update()
+                    if loss_value is None:
+                        continue
+
+                    last_loss = loss_value
+                    epoch_loss += loss_value
+                    loss_updates += 1
+
+                if last_loss is None:
+                    warmup_batches += 1
+                if batch_idx % 10 == 0:
+                    if last_loss is None:
+                        print(
+                            f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, "
+                            f"Loss: warming_up (buffer {len(self.replay_buffer)}/{self.batch_size})"
+                        )
+                    else:
+                        print(
+                            f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}/{len(train_loader)}, "
+                            f"Loss: {last_loss:.8f}"
+                        )
+
+            avg_loss = (epoch_loss / loss_updates) if loss_updates else None
             history['train_loss'].append(avg_loss)
-            
-            # บันทึกลง TensorBoard
-            if tensorboard_logger:
+
+            if tensorboard_logger and avg_loss is not None:
                 tensorboard_logger.log_scalar('train_loss', avg_loss, epoch)
-            
-            # ประเมินกับชุดข้อมูล validation
+
+            loss_display = f"{avg_loss:.6f}" if avg_loss is not None else "n/a (buffering replay)"
+
             if val_loader:
                 val_loss = self.evaluate(val_loader)['loss']
                 history['val_loss'].append(val_loss)
-                
-                # บันทึกลง TensorBoard
+
                 if tensorboard_logger:
                     tensorboard_logger.log_scalar('val_loss', val_loss, epoch)
-                
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}, Val Loss: {val_loss:.6f}")
+
+                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {loss_display}, Val Loss: {val_loss:.6f}")
             else:
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_loss:.6f}")
-        
+                logger.info(f"Epoch {epoch+1}/{epochs}, Train Loss: {loss_display}")
+
+            if warmup_batches:
+                logger.debug(
+                    f"Epoch {epoch+1}: skipped {warmup_batches} batches while filling replay buffer (updates={loss_updates})"
+                )
+
+
         self.is_trained = True
-        
-        # ปิด TensorBoard logger
+
         if tensorboard_logger:
-            tensorboard_logger.close()
-        
+            try:
+                tensorboard_logger.close()
+            except Exception:
+                pass
+
         return history
     
     def predict(self, inputs) -> int:
